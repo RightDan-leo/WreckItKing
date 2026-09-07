@@ -24,7 +24,7 @@
 | pet-hatch-evolution | 龙蛋孵化与宠物进化 | in-progress | [tasks/pet-hatch-evolution.spec.md](./tasks/pet-hatch-evolution.spec.md) |
 | flame-dragon-finale | 火焰巨龙出场演出与下载结算 | in-progress | [tasks/flame-dragon-finale.spec.md](./tasks/flame-dragon-finale.spec.md) |
 | sealed-vein-offering | 封印献祭：金币的终点站与玩家亲手破封 | in-progress | [tasks/sealed-vein-offering.spec.md](./tasks/sealed-vein-offering.spec.md) |
-| progression-ladder-rework | 推进阶梯重排：武器台进城、城与武器/锄头严格交替、龙蛋定点 | ready | [tasks/progression-ladder-rework.spec.md](./tasks/progression-ladder-rework.spec.md) |
+| progression-ladder-rework | 推进阶梯重排：武器台进城、城与武器/锄头严格交替、钻石单轨、龙蛋定点 | done（低级矿消耗率一条未达标，见该文第 8.1 节） | [tasks/progression-ladder-rework.spec.md](./tasks/progression-ladder-rework.spec.md) |
 
 ## 调参入口
 

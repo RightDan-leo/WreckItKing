@@ -1270,9 +1270,18 @@
                 // 广告的前十五秒是留存生死线，这段里玩家只是在挖第一片矿、走回城。
                 // 30 枚要凿 123 格低级矿，20 枚 82 格，加上两趟各 1.3 秒的路，
                 // 第二个进度点从 19 秒挪到 13 秒上下，落回中位间隔那一档。
-                { level: 2, radius: 9.8, cost: 20, unlock: "pickaxe", label: "主城" },
-                { level: 3, radius: 12.2, cost: 65, unlock: "hatchery", label: "主城" },
-                { level: 4, radius: 14.6, cost: 100, unlock: "evolve", label: "主城" }
+                // 解锁顺序改过一次（2026-09-07）：原先是 Lv2→锄头、Lv3→孵化台、Lv4→进化。
+                // 现在每一级城解锁一件设施，那件设施升完才放行下一级城（见 releaseCityGate），
+                // 于是「城 → 设施 → 城 → 设施」严格交替，玩家任何时刻只有一个下一步。
+                // 进化台不再挂在城上，改由武器台满级放出——它和孵化、进化抢同一个钻石池，
+                // 三张并排亮着时实测进化会被拖后 36.5 秒。整条钻石单轨见 forgeWindowOpen。
+                { level: 2, radius: 9.8, cost: 20, unlock: "forge", label: "主城" },
+                // 65 降到 38。锄头推迟到 Lv3 之后，意味着拿到二级锄头前只能挖低级矿，
+                // 而低级矿整层清空只有 89 金币——按 65 算，城 Lv2 + Lv3 要 85，等于逼玩家
+                // 把第一道矿墙铲平（96%）。这个游戏的前提是凿隧道不是清场：矿被挖光之后
+                // 锄头升级的横扫桶没东西可清，分层凿穿的观感也塌了。38 把占比压回 65%。
+                { level: 3, radius: 12.2, cost: 38, unlock: "pickaxe", label: "主城" },
+                { level: 4, radius: 14.6, cost: 100, unlock: "hatchery", label: "主城" }
             ];
 
             const PICKAXE_LEVELS = [
@@ -1299,8 +1308,9 @@
             //
             // 所以切开：**锄头（宝石）只管挖，武器（钻石）只管打**。主题上也顺，镐头凿矿、附魔杀怪。
             //
-            // 伤害数列刻意照抄原先锄头那一串（235 / 425 / 615 / 805，perWeapon 仍是 190），
-            // 于是七只守卫的血量一个都不用动：切分改的是「谁驱动这个数」，不是数本身。
+            // 伤害数列刻意照抄原先锄头那一串，于是七只守卫的血量一个都不用动：
+            // 切分改的是「谁驱动这个数」，不是数本身。（后来砍成三级，端点仍然保留，
+            // 见 WEAPON_LEVELS 里那段。）
             //
             // 不新增手持物。四级都是给手上那把镐附魔（见 applyWeaponAppearance），
             // 一是模型和挥击动画都不用动，二是免了「矿工背着剑挖矿」的违和。
@@ -1310,14 +1320,25 @@
                 // reach 加在 CONFIG.attackRange 上；splash 是三连击第三下的溅射半径
                 // （0 = 不溅开），splashRatio 是溅到旁边那些怪身上的伤害比例。
                 //
-                // Lv4 的附加在规划里写的是「完美闪避后的反击变成范围扇击」，落地时换成了
+                // 最高档的附加在规划里写的是「完美闪避后的反击变成范围扇击」，落地时换成了
                 // 溅射加强：那条描述预设了一个「反击」动作，而这一版完美闪避给的是破绽
                 // （怪物踉跄、玩家自己找输出窗口），没有反击这个动作可以改。溅射能一路加宽，
-                // 成长感是连续的，而且和 Lv3 共用同一段代码。
-                { level: 1, reach: 0, splash: 0, splashRatio: 0, power_score: 0 },
-                { level: 2, reach: 0.6, splash: 0, splashRatio: 0, power_score: 980 },
-                { level: 3, reach: 0.6, splash: 2.6, splashRatio: 0.3, power_score: 2240 },
-                { level: 4, reach: 0.6, splash: 3.4, splashRatio: 0.55, power_score: 3860 }
+                // 成长感是连续的，而且和上一档共用同一段代码。
+                //
+                // ── 2026-09-07：四级砍成三级，伤害改成按级写死 ──────────────────
+                // 武器台和孵化、进化抢同一个钻石池，排成单轨之后第四级只能落在进化后面、
+                // 离终局只剩十几秒，是一条栽过的坑。所以去掉中间那档。
+                //
+                // 伤害原先是 `base + (等级-1) × perWeapon` 算出来的线性数列
+                // 235 / 425 / 615 / 805。直接删一级会让上限掉到 615，高级守卫 9000 血
+                // 从 11 刀变 15 刀——那是一次没人要求过的战斗节奏改动。所以改成查表，
+                // **两个端点原样保留**：235 / 425 / 805，递进反而更陡，配「越来越炫」更顺。
+                // 七只守卫的血量因此仍然一格都不用动。
+                { level: 1, damage: 235, reach: 0, splash: 0, splashRatio: 0, power_score: 0 },
+                { level: 2, damage: 425, reach: 0.6, splash: 0, splashRatio: 0, power_score: 980 },
+                // 顶格取原第四级那组溅射（3.4 / 0.55），不是原第三级的 2.6 / 0.3——
+                // 端点保留是这次改动的原则，特效和伤害都照这条办。
+                { level: 3, damage: 805, reach: 0.6, splash: 3.4, splashRatio: 0.55, power_score: 3860 }
             ];
 
             // 宝石的品质档位。id 直接复用矿层 id——「哪一层矿产哪一档宝石」是一一对应的，
@@ -1393,7 +1414,11 @@
                     // 而且三笔加起来 18 必须明显小于「守卫掉落总量减掉宠物线」——钻石是
                     // 离散且有限的，差一颗就是死锁，所以这条线宁可留余量也不做成刚好花完。
                     // 供给侧的增量挂在 ARPG.guardGemBonus，那儿有整笔账。
-                    weaponCost: [4, 6, 8],
+                    // 两级升级（三档武器）。原先三级、共 18 颗，砍掉最后一级的缘由见
+                    // WEAPON_LEVELS 那段：钻石单轨之后它只能落在进化后面，买完没仗打。
+                    // 现在钻石总开销 4+6+8+14 = 32，供给 44，余 12——那 12 颗要靠调
+                    // ARPG.guardGemBonus 或抬进化价吸收，钻石 HUD 不像宝石那样会自己隐藏。
+                    weaponCost: [4, 6],
                     // 钻石接手宠物线。守卫数按每层的段数来：低 2、中 2、高 3，一共七只。
                     // 供给 2×3 + 2×4 + 3×4 = 26，花 8 + 14 = 22，余 4。
                     // 只打低中两档拿 14 颗，付完孵化台剩 6，够不着 14 的进化——
@@ -1445,10 +1470,10 @@
                 // 玩家伤害 = base + (等级-1) × 每级加成 + (已进化 ? evolvedBonus : 0)，
                 // 三连击的第三下再乘 comboMultiplier。
                 //
-                // 「等级」是谁看版本：宝石版走武器等级 × perWeapon（锄头不再参与战斗），
-                // 金币版走锄头等级 × perPickaxe。判断和公式都在 playerHitDamage 里。
-                // 两个每级加成故意给同一个数——切分职责改的是驱动变量，不是强度曲线。
-                playerDamage: { base: 235, perPickaxe: 190, perWeapon: 190, evolvedBonus: 220, comboMultiplier: 3.35 },
+                // base 和 perPickaxe **只在 ?arpg=0（武器线关掉）时才起作用**。武器线开着时
+                // 伤害查 WEAPON_LEVELS[].damage——它砍成三级之后数列不再等距，公式表达不了。
+                // perWeapon 已经删掉：留着就是一个拖了不生效、还不报错的旋钮。
+                playerDamage: { base: 235, perPickaxe: 190, evolvedBonus: 220, comboMultiplier: 3.35 },
                 pet: {
                     hatched: { damage: 180, fireInterval: 0.85, range: 10 },
                     evolved: { damage: 620, fireInterval: 0.42, range: 14, powerGain: 3200 }
@@ -1642,11 +1667,13 @@
                 },
                 {
                     label: "战斗 · 玩家",
-                    note: "伤害 = 基础 + (等级-1) × 每级加成 + (已进化 ? 进化加成 : 0)，三连击第三下再乘倍率。「等级」在宝石版是武器等级、金币版是锄头等级，所以下面那两根每级加成一次只有一根在起作用。",
+                    note: "武器线开着时伤害直接查下面那三档（三连击第三下再乘倍率、已进化再加进化加成）。关掉武器线（?arpg=0）才走「基础 + (锄头等级-1) × 每级锄头加成」那条老公式，所以「基础伤害」和「每级锄头加成」这两根平时是不起作用的。",
                     fields: [
-                        { path: "BALANCE.playerDamage.base", label: "基础伤害", min: 0, max: 3000, step: 5 },
-                        { path: "BALANCE.playerDamage.perWeapon", label: "每级武器加成（宝石版）", min: 0, max: 2000, step: 5 },
-                        { path: "BALANCE.playerDamage.perPickaxe", label: "每级锄头加成（金币版）", min: 0, max: 2000, step: 5 },
+                        { path: "WEAPON_LEVELS.0.damage", label: "武器 Lv1 伤害", min: 0, max: 3000, step: 5 },
+                        { path: "WEAPON_LEVELS.1.damage", label: "武器 Lv2 伤害", min: 0, max: 3000, step: 5 },
+                        { path: "WEAPON_LEVELS.2.damage", label: "武器 Lv3 伤害", min: 0, max: 3000, step: 5 },
+                        { path: "BALANCE.playerDamage.base", label: "基础伤害（仅 ?arpg=0）", min: 0, max: 3000, step: 5 },
+                        { path: "BALANCE.playerDamage.perPickaxe", label: "每级锄头加成（仅 ?arpg=0）", min: 0, max: 2000, step: 5 },
                         { path: "BALANCE.playerDamage.evolvedBonus", label: "进化加成", min: 0, max: 2000, step: 5 },
                         { path: "BALANCE.playerDamage.comboMultiplier", label: "三连击倍率", min: 1, max: 10, step: 0.05 },
                         { path: "CONFIG.attackCooldown", label: "攻击间隔（秒）", min: 0.1, max: 1.5, step: 0.01 },
@@ -1844,20 +1871,23 @@
                 "city-build": { x: 0, z: -4.6 },
                 "city-upgrade": { x: 0, z: -4.6 },
                 pickaxe: { x: 5.4, z: -3.4 },
-                hatchery: { x: -5.4, z: -3.4 },
+                // 孵化台和锻造台在 2026-09-07 对调了槽位。锻造台改成主城 Lv2 就亮，
+                // 而 Lv2 的城半径只有 9.8——地贴半边 1.7，槽位半径必须 ≤ 8.1，
+                // 原来那个 (-4.2,-7.8)（半径 8.86）会让它探出城墙，实机上看着像丢在野地里。
+                // 孵化台推迟到 Lv4（半径 14.6）才亮，8.86 对它绰绰有余。
+                // 对调而不是另找位置：这两个槽位之间、以及和广场火炬的间距都是验过的。
+                hatchery: { x: -4.2, z: -7.8 },
                 evolve: { x: 0, z: -9.4 },
-                // 锻造台放在西侧偏北，和孵化台（-5.4, -3.4）、进化台（0, -9.4）围成
-                // 一个三角——三张吃钻石的贴都在西半边和中轴北端，东侧那张（锄头，吃宝石）
-                // 和中轴那张（主城，吃金币）各归各。玩家攒哪种钱该往哪走，靠站位就能记住。
+                // 三张吃钻石的贴（锻造、孵化、进化）都在西半边和中轴北端，东侧那张
+                // （锄头，吃宝石）和中轴那张（主城，吃金币）各归各。玩家攒哪种钱该往哪走，
+                // 靠站位就能记住。
                 //
-                // 这个位置是第二版。第一版放在 (-5.4, -8.2)，四张地贴之间的间距都算过了，
-                // 漏算的是广场装饰——那儿离两根火炬（±6.4,-6.8 和 ±6.2,-9.8）和一根旗杆
-                // （±4.4,-6.6）都只有 1.7~1.9 米，而地贴半边就有 1.8，实机截图上火焰
-                // 直接糊在火苗图标旁边，读起来是一团橙黄，分不清哪个是可交互的。
-                //
-                // 广场装饰当初是按「避开四张地贴的方块范围」摆的（见 PLAZA_TORCHES 那段），
-                // 第五张进来就必然要让一让：挡路的那对旗杆撤掉了，剩下的按 2.4 米以上避开。
-                forge: { x: -4.2, z: -7.8 },
+                // 广场装饰按「避开地贴的方块范围」摆（见 PLAZA_TORCHES 那段），两根火炬在
+                // ±6.4,-6.8 和 ±6.2,-9.8。曾经有一版把贴子放到离火炬只有 1.7~1.9 米的地方，
+                // 而地贴半边就有 1.7，实机截图上火焰直接糊在图标旁边，读起来是一团橙黄，
+                // 分不清哪个是可交互的。挡路的那对旗杆（±4.4,-6.6）因此撤掉了，
+                // 剩下的按 2.4 米以上避开——加地贴或挪位置时这条要一起核。
+                forge: { x: -5.4, z: -3.4 },
                 // 献祭点不在城里，它在扇形中线上、封印矿内壁前 1.6 米（半径 41.8）。
                 //
                 // 这个半径是被夹出来的：高级矿外缘 40.2、封印矿内缘 43.4，中间那条 3.2 米
@@ -1979,8 +2009,10 @@
             let player, playerVisual, playerWeapon, playerBow, playerRing, playerCape;
             // "pick" | "bow"，见 setHeldItem。
             let heldItem = "pick";
-            // 锻造台是否已经亮过。见 revealForgeOnFirstGem。
-            let forgeRevealed = false;
+            // 扩建贴在等哪张地贴完成。null = 不等，可以直接买下一级城。
+            // 城解锁一件设施、那件设施升完才放行下一级城，两条线因此严格交替，
+            // 玩家任何时刻只有一个下一步。见 completeCityUpgrade / releaseCityGate。
+            let cityGate = null;
             // 弓的开弓进度（1 → 0）。和镐的 playerWeapon.userData.swing 分开：
             // 一个是挥砸、一个是拉弦放箭，两条动画的曲线不一样。
             let bowDraw = 0;
@@ -2148,6 +2180,7 @@
                 syncBackCoins();
                 updateUI();
                 showTile("city-build");
+                spawnFixedEgg();
                 animate();
 
                 window.__wik = {
@@ -2493,6 +2526,17 @@
                         }))
                         .sort((a, b) => a.dist - b.dist)
                         .slice(0, 6),
+                    // 每层矿的剩余格数。校准「买下一步得铲平多少矿」时看的是这个——
+                    // nodes() 只给最近六段，读不出整层的消耗率，而消耗率正是判断
+                    // 某一级定价会不会把矿掏空（横扫桶因此没东西可清）的唯一依据。
+                    ore: () => TIER_ORDER.reduce((acc, id) => {
+                        const nodes = oreNodes.filter(n => n.tierId === id);
+                        if (!nodes.length) return acc;
+                        const total = nodes.reduce((sum, n) => sum + n.total, 0);
+                        const left = nodes.reduce((sum, n) => sum + n.remaining, 0);
+                        acc[id] = { left, total, used: Number(((1 - left / total) * 100).toFixed(1)) };
+                        return acc;
+                    }, {}),
                     // 钻石供给完全由「玩家自然流程里会打死几只守卫」决定，而这个数无法靠读代码
                     // 推出来——它取决于引导把人带到哪一段、横扫替玩家杀掉几只。必须实测。
                     // 冻在矿里的守卫 alive 本来就是假（revealOreMonster 才置真），所以「死了」
@@ -3547,7 +3591,8 @@
                 attackLunge = 1;
                 // 打怪射箭、打矿挥镐。不读 heldItem 而是自己重算一遍：__wik.hit() 会绕过
                 // 主循环直接调这儿，那条路上 heldItem 还是上一帧的值。
-                const shooting = !mining && weaponEnabled();
+                // 武器 Lv1 还没买到弓，这一段退回近战挥击（见 bowUnlocked）。
+                const shooting = !mining && bowUnlocked();
                 const color = mining ? target.userData.node.tier.glow : weaponArcColor();
                 playSound("attack");
 
@@ -4588,13 +4633,15 @@
 
             // 玩家一次普通攻击的伤害（不含三连击第三下的倍率）。
             //
-            // 武器线开着时由武器等级驱动、锄头不再参与；关掉时原样退回锄头驱动。
-            // 两个分支的数列是同一串（235 / 425 / 615 / 805），换的只是驱动它的那个变量。
+            // 武器线开着时查 WEAPON_LEVELS[].damage，关掉时（?arpg=0）退回锄头驱动的
+            // 线性公式。两条路原先共用同一个线性式，武器线砍成三级之后它的数列不再等距
+            // （235 / 425 / 805），公式表达不了，只能查表——而锄头那条仍是四级等距，
+            // 硬凑成一套反而要给锄头也加一列查不到的 damage。
             function playerHitDamage() {
                 const cfg = BALANCE.playerDamage;
-                const level = weaponEnabled() ? weaponLevel : pickaxeLevel;
-                const perLevel = weaponEnabled() ? cfg.perWeapon : cfg.perPickaxe;
-                return cfg.base + (level - 1) * perLevel + (petEvolved ? cfg.evolvedBonus : 0);
+                const bonus = petEvolved ? cfg.evolvedBonus : 0;
+                if (weaponEnabled()) return weaponTier(weaponLevel).damage + bonus;
+                return cfg.base + (pickaxeLevel - 1) * cfg.perPickaxe + bonus;
             }
 
             // 攻击距离。武器 Lv2 起加 reach——这是四级里唯一一个不靠数字、靠手感就能
@@ -4682,17 +4729,26 @@
                 cityLevel += 1;
                 buildCityStage(cityLevel);
                 playSound("upgrade");
-                if (stage && stage.unlock) {
-                    showTile(stage.unlock);
-                    toast(unlockCopy(stage.unlock));
-                    if (stage.unlock === "hatchery") ensureEggAvailability();
+                // 这一级城解锁的设施，同时也是下一级城的门。武器线被 ?arpg=0 关掉时
+                // 锻造台根本不存在，那道门要当场作废——否则扩建贴会永远等一件不会出现的设施。
+                const unlock = stage && stage.unlock;
+                const gated = unlock && (unlock !== "forge" || weaponEnabled());
+                if (gated) {
+                    showTile(unlock);
+                    toast(unlockCopy(unlock));
+                    if (unlock === "hatchery") ensureEggAvailability();
                 } else {
                     toast(`主城升级到 Lv.${cityLevel}`);
                 }
                 const zone = zones.find(item => item.id === "city-upgrade");
                 if (zone) {
                     if (cityLevel >= CITY_STAGES.length) removeZone(zone);
-                    else resetZone(zone, resolveTileCost("city-upgrade"));
+                    else {
+                        resetZone(zone, resolveTileCost("city-upgrade"));
+                        // 孵化台是最后一级城解锁的，它后面没有城了，不用设门。
+                        cityGate = gated && unlock !== "hatchery" ? unlock : null;
+                        if (cityGate) zone.group.visible = false;
+                    }
                 }
                 updateUI();
             }
@@ -4701,6 +4757,10 @@
                 if (id === "pickaxe") return "主城扩张，解锁升级锄头";
                 if (id === "hatchery") return "主城扩张，解锁孵化台";
                 if (id === "evolve") return "主城扩张，解锁宠物进化";
+                // 把钻石的来源和去向写进同一句话。地贴上是青色菱形、HUD 上也是青色菱形，
+                // 但玩家手上同时还有一个白色菱形的宝石计数——实测这两个图标会被读混，
+                // 「打怪掉的」四个字比任何图标都管用。
+                if (id === "forge") return "主城扩张，解锁武器建造台——打怪掉的钻石在这儿换武器";
                 return "主城扩张";
             }
 
@@ -4860,8 +4920,18 @@
             //
             // 武器线关掉时（?arpg=0）永远举镐：那一版的伤害是锄头驱动的，
             // 举着弓却按锄头等级结算伤害是自相矛盾的读数。
+            // 弓是买来的，不是自带的。用户要的是「升级了武器建造台后，获得弓箭」——
+            // 弓从第一帧就挂在手上的话，那次升级就没有「拿到一件新东西」这个瞬间，
+            // 而那正是这条线要卖的东西。
+            //
+            // 举弓和射箭是两处独立判断（setHeldItem 管手持物、playerAttack 里的 shooting
+            // 管投射物），必须共用这一个判据，否则会出现「举着镐却在射箭」。
+            function bowUnlocked() {
+                return weaponEnabled() && weaponLevel >= 2;
+            }
+
             function setHeldItem(kind) {
-                const bow = kind === "bow" && weaponEnabled() && playerBow;
+                const bow = kind === "bow" && bowUnlocked() && playerBow;
                 heldItem = bow ? "bow" : "pick";
                 if (playerWeapon) playerWeapon.visible = !bow;
                 if (playerBow) playerBow.visible = Boolean(bow);
@@ -4896,6 +4966,7 @@
                     if (!nextCost) removeZone(zone);
                     else resetZone(zone, nextCost);
                 }
+                releaseCityGate("pickaxe");
                 updateUI();
                 // 满级按预设能买到第几级判，不能写死 3：A 版封顶三级、宝石版四级，
                 // 写死的话宝石版买到 Lv3 就会报「已满级」，而地贴上明明还挂着下一档。
@@ -4911,32 +4982,54 @@
                 startEggPlace();
             }
 
-            // 锻造台在**第一次拿到钻石**时亮，也就是打死第一只守卫的那一刻。
+            // ── 钻石单轨 ──────────────────────────────────────────────────────
             //
-            // 原先挂在孵化之后，理由是「钻石有三个出口（孵化 8、进化 14、武器 18），
-            // 抢同一个池子，而龙是卖点，宠物线必须排在前面」。这条现在被推翻了：
-            // 弓箭正是让战斗好玩的那个东西，来太晚就没意义——玩家打完第一只守卫、
-            // 手上第一次有钻石的时候，才是「钻石从哪来 → 钻石买什么」连成一句话的时刻。
+            // 吃钻石的有三张地贴：锻造台、孵化台、进化台。它们抢同一个钻石池，而龙是这个
+            // 广告的卖点。并排放出去实测的结果是：进化台在 84.5 秒就能付钱了，却拖到 121 秒
+            // 才被买下——中间 36.5 秒玩家手上的钻石全流去了锻造台，一局才 137 秒。
             //
-            // 宠物线不会因此被挤掉：`getGuideGoal()` 里锻造台的门槛是「买完这一级、
-            // 宠物线仍然买得起」（还带 pendingGuardGems 前瞻），排序保护在那儿，
-            // 不靠「晚点才亮」来实现。代价只是龙晚出来几秒。
+            // 所以不靠引导排序，直接一次只放一张，顺序写死：
+            //     武器 Lv2  →  孵化台  →  武器 Lv3  →  进化
+            // 锻造台因此有两个窗口，中间那段收起来。它不是删掉、是隐藏——removeZone 之后
+            // showTile 会重建一个新的，付款进度会丢。
             //
-            // 用一次性标志而不是直接调 showTile：满级后 completeWeapon 会把地贴撤掉，
-            // 而 showTile 找不到 zone 时会**重建**一个——那样每捡一颗钻石都会让
-            // 已经买满的锻造台重新长回来。
-            function revealForgeOnFirstGem() {
-                if (forgeRevealed || !weaponEnabled()) return;
-                forgeRevealed = true;
-                showTile("forge");
+            // 武器 Lv3 卡在进化前面，等于它不再是可选支线，必须进 ensureProgressAffordable
+            // 的兜底，否则钻石不够时整局锁死。那儿有对应的一条。
+            function forgeWindowOpen() {
+                if (!weaponEnabled()) return false;
+                if (weaponLevel >= WEAPON_LEVELS.length) return false;
+                // Lv1→Lv2 是第一个窗口，城 Lv2 一亮就开着。
+                // Lv2→Lv3 要等破壳：宠物线排在前面。
+                return weaponLevel === 1 || Boolean(pet);
             }
 
-            // 钻石进账的唯一入口。原先五处各自 `gems += n`，加「第一次拿到钻石」这个
+            function syncForgeWindow() {
+                const zone = zones.find(item => item.id === "forge");
+                if (!zone) return;
+                const open = forgeWindowOpen();
+                if (zone.group.visible === open) return;
+                zone.group.visible = open;
+                // 重新亮起时如果玩家正踩在上面，要求他走开再回来。否则地贴一出现就开始
+                // 扣钱，玩家根本没看见自己买了什么。createZone 里是同一条规则。
+                if (open) zone.requiresReentry = isPlayerInsideZonePosition(zone.position);
+            }
+
+            // 扩建贴的放行。城解锁的那件设施升完一级，下一级城才买得到。
+            function releaseCityGate(id) {
+                if (cityGate !== id) return;
+                cityGate = null;
+                const zone = zones.find(item => item.id === "city-upgrade");
+                if (!zone) return;
+                zone.group.visible = true;
+                zone.requiresReentry = isPlayerInsideZonePosition(zone.position);
+                toast("主城可以继续扩建了");
+            }
+
+            // 钻石进账的唯一入口。原先五处各自 `gems += n`，要加任何「拿到钻石时」的
             // 触发点就得改五处，漏一处就是一条玩家永远看不到的成长线。
             function gainGems(amount) {
                 if (!(amount > 0)) return;
                 gems += amount;
-                revealForgeOnFirstGem();
             }
 
             function completeWeapon() {
@@ -4951,17 +5044,31 @@
                 if (zone) {
                     const nextCost = resolveTileCost("forge");
                     if (!nextCost) removeZone(zone);
-                    else resetZone(zone, nextCost);
+                    else {
+                        resetZone(zone, nextCost);
+                        // 单轨：买完这一级就收起来，下一个窗口由 syncForgeWindow 放行。
+                        zone.group.visible = false;
+                    }
                 }
+                releaseCityGate("forge");
+                // 武器满级 = 宠物线的最后一步可以开始了。进化台原先挂在主城 Lv4 上，
+                // 那个位置让给孵化台之后，改由这儿放出——单轨的最后一棒。
+                if (weaponLevel >= WEAPON_LEVELS.length && pet && !petEvolved) showTile("evolve");
                 updateUI();
                 // 报出这一级买到的附加，不报伤害数字。伤害只在打中时闪一下就没了，
-                // 玩家记不住 425 和 615 的区别；「够得更远」「一下打两只」是他能在
+                // 玩家记不住 425 和 805 的区别；「够得更远」「一下打两只」是他能在
                 // 下一次遭遇里亲自验证的东西。
-                const gained = weaponLevel === 2 ? "攻击距离变长了"
-                    : weaponLevel === 3 ? "三连击最后一下会溅到旁边的怪"
-                    : "溅射的范围和威力再上一档";
+                //
+                // Lv2 单独说一句：那一级给的不是加成，是**弓本身**（见 bowUnlocked）。
+                // 它是这条线唯一一次「手上多了一件东西」，混在「附魔完成」里就读没了。
+                if (weaponLevel === 2) {
+                    toast("弓箭打造完成！现在可以远程射杀守卫了");
+                    return;
+                }
+                const gained = weaponLevel === 3 ? "三连击最后一下会炸开，溅到旁边的怪"
+                    : "威力再上一档";
                 const maxed = weaponLevel >= WEAPON_LEVELS.length;
-                toast(maxed ? `武器附魔满级，${gained}` : `武器附魔完成，${gained}`);
+                toast(maxed ? `弓箭强化满级，${gained}` : `弓箭强化完成，${gained}`);
             }
 
             // 弓的分级外观。原先这儿是「给手上那把镐套一层附魔壳」，代价当初就明写下来
@@ -5004,20 +5111,27 @@
                     glow.renderOrder = 6;
                 }
                 glow.visible = true;
-                // 三档：起亮 → 转橙 → 烧透。除了透明度还得一起拉尺寸和颜色——加色混合
-                // 在亮地面上很容易糊成一片白，光靠 opacity 分不出这三级。
-                const heat = level - 2;
+                // 起亮 → 烧透。除了透明度还得一起拉尺寸和颜色——加色混合在亮地面上
+                // 很容易糊成一片白，光靠 opacity 分不出档位。
+                //
+                // 乘 2 是因为武器线从四级砍成了三级：原先 heat 走 0/1/2 三档，现在只剩
+                // 两档，直接用 level-2 的话顶格停在原来的中间档，最亮那一档没人看得到了。
+                // 端点保留是这次砍级的原则，这里跟着跳一档。
+                const heat = (level - 2) * 2;
                 glow.material.opacity = 0.4 + heat * 0.16;
                 glow.material.color.setHex(color);
                 glow.scale.set(0.9 + heat * 0.16, 0.16 + heat * 0.05, 0.16 + heat * 0.05);
                 glow.position.x = 0.16;
             }
 
-            // 攻击弧光的颜色。武器 Lv3 起从青白转橙：打怪时玩家的视线在怪身上，
-            // 不在自己手里那把镐上，所以这道每次挥击都划过屏幕的弧光比镐头上那层壳显眼得多。
+            // 攻击弧光的颜色。顶格从青白转亮橙：打怪时玩家的视线在怪身上，不在自己手里
+            // 那把弓上，所以这道每次挥击都划过屏幕的弧光比弓上那层辉光显眼得多。
+            //
+            // 顶格取 0xffa23c（原四级时代最高那一档），不是 0xff6a2a。武器线砍成三级之后
+            // 「>= 4」那条分支永远走不到，照抄的话最亮的颜色整局都不会出现。
             function weaponArcColor() {
-                if (!weaponEnabled() || weaponLevel < 3) return 0x8fd6ff;
-                return weaponLevel >= 4 ? 0xffa23c : 0xff6a2a;
+                if (!weaponEnabled() || weaponLevel < WEAPON_LEVELS.length) return 0x8fd6ff;
+                return 0xffa23c;
             }
 
             function completeEvolve() {
@@ -7511,7 +7625,6 @@
                     // 钻石抛得比金币散一点，让它在一堆金币里显出来。
                     if (gemDrop) dropCoins(at, gemDrop, Object.assign({ kind: "gem" }, BALANCE.coinToss.guardGem));
                     playSound("break");
-                    maybeDropEgg(data, target.position.clone());
                 }
             }
 
@@ -7586,37 +7699,53 @@
                 return group;
             }
 
-            function maybeDropEgg(data, position) {
-                if (pet || carryingEgg || eggPickup || eggSpawned) return;
-                if (cityLevel < 3) return;
-                if (data.tierId === "low") return;
-                spawnEggAt(position);
+            // 龙蛋固定在中级矿和高级矿之间那条走廊的中线上，开局就摆在那儿。
+            //
+            // 原先它是「凿穿一段中级以上的矿墙就掉出来」，落点取离玩家最近的那段矿。
+            // 那套的毛病是玩家不知道蛋在哪、也不知道什么时候会有——每一局的位置都不一样，
+            // 于是「去把蛋找出来」这件事在体感上是随机的，而它本该是这条线最明确的一个目标。
+            //
+            // 固定点的好处是它可以**很早就被看见**：蛋一进画面，那个锁形标记（屏幕空间的，
+            // 出画自动隐藏）就亮起来，玩家凿穿低级矿站进第一条走廊时就看得到远处有东西等着。
+            // 摸不到没关系——要走到 32.4 得先凿穿中级矿，也就是二级锄头之后。
+            // 「早早看见、很久之后才拿到」正是想要的。
+            //
+            // 走廊范围 30.1~34.8，取中线（32.45）。角度取扇形中线，玩家出城一路直走就能撞上。
+            //
+            // 现算而不是存成常量：矿环半径是可以在调参面板里改的，而那些覆盖值要等
+            // init() 里的 setupTuning() 才写进 ORE_TIERS。存成模块级常量的话它在脚本
+            // 求值时就定死了，调参改完环半径，蛋会留在旧走廊的位置——而那时那儿是矿墙里。
+            function eggSitePosition() {
+                const radius = (ORE_TIERS.mid.ringRadius + ORE_TIERS.mid.ringThickness / 2 +
+                    ORE_TIERS.high.ringRadius - ORE_TIERS.high.ringThickness / 2) / 2;
+                return new THREE.Vector3(
+                    Math.cos(SECTOR.center) * radius,
+                    0,
+                    Math.sin(SECTOR.center) * radius
+                );
             }
 
-            // 凿穿过一段中级以上的矿墙，蛋就该到手了。
-            //
-            // 不能等守卫死亡那条正常路径，它在这儿几乎必然错过：贯通中级第一段只要二级锄头，
-            // 四十五秒上下就发生了，而掉蛋要等三级城解锁孵化台，五十七秒才到——守卫早死了十秒。
-            // 于是蛋只能等第二段的守卫，可第二段常常压根不用挖（第一段那条隧道就够赚出下一步的钱），
-            // 孵化因此在「锄头三级之前」和「之后」两边来回跳，中级段该有的孵蛋和宠物整个滑出那一段。
-            //
-            // 扇形化把中级矿从八段砍到两段之后这件事才暴露出来：八名守卫里总有一个死得够晚。
+            function spawnFixedEgg() {
+                if (eggSpawned) return;
+                spawnEggAt(eggSitePosition(), true);
+            }
+
+            // 留着当兜底：蛋要是因为任何原因没摆出来，watchdog 会把它补上。
+            // 位置仍然是那个固定点——「随机落点」那套已经整个撤掉了。
             function ensureEggAvailability() {
                 if (pet || carryingEgg || eggPickup || eggSpawned || eggPlace) return;
-                const opened = TIER_ORDER.some(tier => tier !== "low" && breachedByTier[tier] > 0);
-                if (!opened) return;
-                // 落点取离玩家最近的那段矿，不挑等级。放到中级矿段的中心上试过，
-                // 那个点在墙体里，找空地时会被推到墙的外侧去，玩家得先钻过隧道才能捡，白等十八秒。
-                const fallback = getNearestOre() || { position: player.position.clone().add(new THREE.Vector3(0, 0, 6)) };
-                spawnEggAt(fallback.position.clone());
+                spawnFixedEgg();
             }
 
             function updateProgressWatchdog(dt) {
                 watchdogTimer += dt;
                 if (watchdogTimer < 1.5) return;
                 watchdogTimer = 0;
-                if (cityLevel >= 3) ensureEggAvailability();
+                ensureEggAvailability();
                 maybeShowSealOffering();
+                // 单轨的窗口是事件驱动的（升完武器、破壳），但那些回调只在成功路径上跑。
+                // watchdog 每 1.5 秒对一次账，免得任何一条边角分支把锻造台永久留在错误状态。
+                syncForgeWindow();
                 if (petEvolved && !finaleStarted && ringRemaining("high") <= 0) {
                     breachedByTier.high = Math.max(1, breachedByTier.high);
                     checkFinaleTrigger();
@@ -7631,11 +7760,13 @@
                 // 只算挖得动的矿：锄头门槛会让玩家守着一地凿不开的矿，却没钱升级锄头。
                 if (oreNodes.some(node => !node.cleared && canMine(node))) return;
 
+                // 锻造台原先被排除在兜底之外，理由是「可选支线，买不起也卡不住任何东西」。
+                // 钻石单轨之后这条不成立了：武器 Lv3 挡在进化前面，不买就没有进化台，
+                // 整局停在那儿。排除它等于留一个死锁。
+                //
+                // 判据里的 group.visible 顺带把单轨管住了——被收起来的那半段窗口里
+                // 锻造台不可见，兜底不会替一张玩家现在根本买不到的地贴发钻石。
                 const unpaid = zone => zone && zone.group.visible && !zone.complete &&
-                    // 锻造台不参与兜底。它是可选支线，买不起也卡不住任何东西——顶进来只会
-                    // 让这个函数替一条谁都不必走的路发钻石，而钻石多发一颗，整条钻石线的
-                    // 收支就不再对得上账（那笔账在 ARPG.guardGemBonus 那儿）。
-                    zone.id !== "forge" &&
                     zone.cost - zone.paid > walletOf(tileCurrency(zone.id), tileShardGrade(zone.id));
                 // 优先补锄头：补别的地贴解不开「挖不动」这个死结。
                 const pickaxeZone = zones.find(zone => zone.id === "pickaxe");
@@ -7738,7 +7869,10 @@
                 return spot;
             }
 
-            function spawnEggAt(position) {
+            // silent：开局摆固定蛋时用。那一刻玩家还在城里、蛋在三十米外的画外，
+            // 播「发现龙蛋」的提示音和爆点等于替一件他看不见的东西喊了一嗓子。
+            // 锁形标记照常挂上——它自己会在出画时隐藏，等蛋进画面才亮。
+            function spawnEggAt(position, silent) {
                 eggSpawned = true;
                 const mesh = createEggMesh();
                 mesh.position.copy(findClearSpot(position)).setY(0.95);
@@ -7746,6 +7880,7 @@
                 eggPickup = { mesh, bob: Math.random() * 6, progress: 0 };
                 setEggLockProgress(0);
                 ui.eggLock.classList.add("show");
+                if (silent) return;
                 toast("发现龙蛋，靠近拾取后带回孵化台");
                 buildPopEffect(mesh.position.clone(), 20, 0xc08bff);
                 playSound("upgrade");
@@ -7878,6 +8013,10 @@
                 power += 1420;
                 updateUI();
                 toast("宠物幼龙孵化成功，它会自动帮你战斗");
+                // 单轨的第三棒：破壳之后锻造台重新亮起来收 Lv3。
+                // 武器线被关掉时它不存在，进化台就得在这儿直接放出，否则宠物线断在这里。
+                if (weaponEnabled()) syncForgeWindow();
+                else if (!petEvolved) showTile("evolve");
             }
 
             function createPet() {
@@ -9729,37 +9868,31 @@
                 return Math.abs(signedAngleDelta(Math.atan2(point.z, point.x), SECTOR.center)) <= SECTOR.half;
             }
 
-            // 还没到手、但迟早会到手的钻石。用来判断「现在花掉一笔，宠物线还兜不兜得住」——
-            // 只看当下余额会把玩家锁死在一个假的紧缺里：钻石是七次离散掉落，任何一刻的余额
-            // 都远小于整局供给，于是「留够宠物线」这条规则在中段几乎永远为假。
-            //
-            // 冻在矿里的守卫要卡锄头等级。凿得动那层，里面的守卫就是「迟早」；凿不动，
-            // 它只是「也许」，算进预算会让宠物线真的被挤掉，而龙是这个广告的卖点。
-            function pendingGuardGems() {
-                let total = 0;
-                for (const enemy of enemies) {
-                    const data = enemy.userData;
-                    if (data.alive && data.type === "monster") total += guardGemDrop(data.tierId);
-                }
-                for (const node of oreNodes) {
-                    if (!node.monster || node.monsterRevealed || node.cleared) continue;
-                    if (pickaxeLevel < node.tier.requiredPickaxe) continue;
-                    total += guardGemDrop(node.tierId);
-                }
-                return total;
-            }
-
             function getGuideGoal() {
                 if (cityLevel === 0) return new THREE.Vector3(TILE_SLOTS["city-build"].x, 0, TILE_SLOTS["city-build"].z);
                 if (finaleStarted) return null;
 
-                if (eggPickup) return eggPickup.mesh.position.clone();
+                const hatcheryZone = zones.find(zone => zone.id === "hatchery" && !zone.complete);
+
+                // 蛋改成固定点之后，它从开局第一帧就摆在半径 32.45 上了（见 spawnFixedEgg），
+                // 所以这条不能再是「场上有蛋就指过去」——那会在开局就把玩家带向三十米外，
+                // 而通往那儿的中级矿墙要二级锄头才凿得开。实测的表现是整局卡死在墙前：
+                // 城停在 Lv1、低级矿只挖了 11.8%，因为箭头从没指过城里任何一张地贴。
+                //
+                // 门槛挂在孵化台上：孵化台亮着，「去把蛋捡回来」才是一件玩家做得完的事。
+                if (eggPickup && hatcheryZone && hatcheryZone.group.visible) {
+                    return eggPickup.mesh.position.clone();
+                }
 
                 // 箭头只认「现在就付得起、而且轮得到」的地贴，否则玩家会被指着一个收不了钱的格子干站着。
-                const ready = zone => Boolean(zone) && isZonePayable(zone) &&
+                //
+                // group.visible 是必须判的：被反向门和钻石单轨收起来的地贴仍然留在 zones 里
+                // （撤掉的话付款进度会丢），isZonePayable 看不见这一层，光靠它箭头会指向
+                // 一张玩家眼前根本不存在的贴。updateZones 和 ensureProgressAffordable 都判了这个。
+                const ready = zone => Boolean(zone) && zone.group.visible && isZonePayable(zone) &&
                     walletOf(tileCurrency(zone.id)) >= zone.cost - zone.paid;
 
-                const hatchery = zones.find(zone => zone.id === "hatchery" && !zone.complete);
+                const hatchery = hatcheryZone;
                 if (carryingEgg && ready(hatchery)) return hatchery.position.clone();
 
                 const evolve = zones.find(zone => zone.id === "evolve" && !zone.complete);
@@ -9767,33 +9900,16 @@
 
                 // 锻造台排在宠物线之后、其余一切之前。
                 //
-                // 规划里写的是「引导箭头永不指向锻造台」，实测这条太狠了：整局下来玩家只会
-                // 在去进化台的路上顺手踩一脚、买掉一级，剩下十几颗钻石一直挂在 HUD 上
-                // ——钻石不像宝石那样在没处花时会自己隐藏，那串数字会跟到通关。
-                // 一条玩家找不到的成长线，和没做是一样的。
-                //
-                // 所以改成「永不**优先**」：门槛是买完这一级、宠物线仍然买得起。
-                // 龙是这个广告的卖点，孵化和进化一颗钻石都不许被挤掉；但只要余额兜得住，
-                // 玩家就该被告知这儿还能变强。算余额而不是排顺序，是为了让他能在攒进化钱的
-                // 间隙顺手升一级，而不必等宠物线全部结清——那时候守卫已经打完，钻石不会再有了。
+                // 这儿原先有一整套「买完这一级、宠物线还买不买得起」的预算判断
+                // （连带 pendingGuardGems 的前瞻）。钻石单轨落地之后那套整个作废了：
+                // 锻造台和孵化、进化现在任何时刻只有一张亮着（见 forgeWindowOpen），
+                // 「挤掉宠物线」这件事在结构上就不可能发生，不必再靠余额去防。
+                // 留着的话它是一段永远为真的判断，读起来却像还在保护什么。
                 //
                 // requiresReentry 期间不指：刚买完那一级时玩家正站在贴上，此时指着它
                 // 会让他在原地卡住（那个标志要走出去才会解除）。指开一帧，他自然会离开。
                 const forge = zones.find(zone => zone.id === "forge" && !zone.complete);
-                if (ready(forge) && !forge.requiresReentry) {
-                    const reserve = [hatchery, evolve]
-                        .filter(zone => zone && !zone.complete && tileCurrency(zone.id) === "gem")
-                        .reduce((sum, zone) => sum + (zone.cost - zone.paid), 0);
-                    // 预算里要算上还没掉的那些（pendingGuardGems），不能只看手上这几颗。
-                    //
-                    // 只看余额时，锻造台最后一级实测永远排在进化之后：玩家凿高级矿那 29 秒里
-                    // 正好攒够它要的 8 颗，但进化还差 12，`8 - 8 >= 12` 不成立，箭头不指，
-                    // 于是那段成了全场最长的无事件空档（29 秒，中位数的 3.7 倍）。而那 12 颗
-                    // 就挂在他正在凿的这层矿的守卫身上——钱是有的，规则看不见而已。
-                    if (gems - (forge.cost - forge.paid) + pendingGuardGems() >= reserve) {
-                        return forge.position.clone();
-                    }
-                }
+                if (ready(forge) && !forge.requiresReentry) return forge.position.clone();
 
                 // 献祭点和封印墙排在所有地贴和矿点之前——它一出现就是整局唯一该去的地方，
                 // 剩下的矿这时已经被 Lv4 的横扫清空了。
@@ -9837,7 +9953,11 @@
                 // 找不到活守卫时自然落到下面的矿分支：守卫都还冻在矿里，得先凿穿把它唤醒。
                 // 这正好是这一版想要的节奏——挖矿、凿穿、怪跳出来、打它拿钻石、回城升锄头。
                 if (ECON.gems) {
-                    const short = [pickaxe, hatchery, evolve].some(zone => zone && tileCurrency(zone.id) === "gem" &&
+                    // 锻造台要在这张名单里。它现在是钻石的第一个出口（主城 Lv2 就亮），
+                    // 而且卡着下一级城——漏掉的话玩家会被指去挖矿攒一笔挖不出来的钱。
+                    // 判可见性是因为单轨会把它收起来，收起来的时候不该替它指路。
+                    const short = [forge, pickaxe, hatchery, evolve].some(zone => zone &&
+                        zone.group.visible && tileCurrency(zone.id) === "gem" &&
                         isZonePayable(zone) && gems < zone.cost - zone.paid);
                     if (short) {
                         const guard = nearestLivingGuard();
