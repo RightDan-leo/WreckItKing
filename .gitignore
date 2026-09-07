@@ -1,0 +1,17 @@
+# 由 WreckItKing.html 抽出来喂给 .check-refs.js 的脚本副本，随时可重新生成
+.syntax-check.js
+
+# 手工备份快照。版本历史由「副本vN.html」那一组承担，这些是中途的临时存档
+*.bak
+
+# 调试期的截图和探针输出
+_*.png
+_run.json
+_run_payload.json
+crop.png
+.smoke-wide.png
+
+# 飞书登录二维码，不进仓库
+lark-auth-qr.png
+
+node_modules/

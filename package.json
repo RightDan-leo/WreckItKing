@@ -1,0 +1,8 @@
+{
+  "name": "new-wreck-it-king",
+  "private": true,
+  "description": "New Wreck It King local static server + tuning save endpoint",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

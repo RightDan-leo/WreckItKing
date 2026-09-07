@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1600" viewBox="0 0 1100 1600">
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M20 0H0V20" fill="none" stroke="#d9dee7" stroke-width="1"/>
+    </pattern>
+    <pattern id="ore" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="20" height="20" fill="#edc77a"/>
+      <path d="M20 0H0V20" fill="none" stroke="#b47a28" stroke-width="1.2"/>
+      <circle cx="6" cy="6" r="2" fill="#f5dd9e"/>
+    </pattern>
+    <pattern id="hardOre" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="20" height="20" fill="#c88a42"/>
+      <line x1="0" y1="0" x2="0" y2="20" stroke="#7e4b20" stroke-width="7"/>
+    </pattern>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#278b57"/>
+    </marker>
+    <style>
+      text { font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #202733; }
+      .title { font-size: 27px; font-weight: 700; }
+      .sub { font-size: 13px; fill: #596579; }
+      .region { font-size: 21px; font-weight: 700; }
+      .label { font-size: 13px; font-weight: 600; }
+      .small { font-size: 11px; fill: #596579; }
+      .wall { stroke: #303948; stroke-width: 8; stroke-linejoin: round; }
+      .route { fill: none; stroke: #278b57; stroke-width: 5; stroke-dasharray: 13 9; marker-end: url(#arrow); }
+      .branch { fill: none; stroke: #278b57; stroke-width: 3; stroke-dasharray: 8 7; opacity: .75; }
+      .trigger { stroke: #df7927; stroke-width: 3; stroke-dasharray: 10 7; }
+      .enemy { fill: #ef6c64; stroke: #8d2d29; stroke-width: 3; }
+      .bench { fill: #67a8e8; stroke: #275f98; stroke-width: 3; }
+    </style>
+  </defs>
+
+  <rect width="1100" height="1600" fill="#ffffff"/>
+  <rect x="80" y="100" width="720" height="1400" fill="url(#grid)" stroke="#aeb7c4"/>
+  <text x="80" y="48" class="title">&#x77FF;&#x96BE;&#x9003;&#x751F; | &#x624B;&#x7ED8;&#x65B9;&#x6848;&#x5173;&#x5361;&#x5236;&#x4F5C;&#x84DD;&#x56FE;</text>
+  <text x="80" y="74" class="sub">&#x9876;&#x89C6;&#x56FE; | &#x4E09;&#x4E2A;&#x533A;&#x57DF;&#x5168;&#x90E8;&#x94FA;&#x6EE1;&#x77FF;&#x4F53; | &#x73A9;&#x5BB6;&#x7531;&#x4E0B;&#x5411;&#x4E0A;&#x81EA;&#x884C;&#x6398;&#x8FDB;</text>
+
+  <rect x="250" y="105" width="400" height="125" rx="18" fill="#e8edf3" stroke="#596579" stroke-width="3"/>
+  <text x="450" y="140" text-anchor="middle" class="region">&#x6D1E;&#x5916; / CTA&#x6F14;&#x51FA;&#x533A;</text>
+  <text x="450" y="170" text-anchor="middle" class="small">&#x51FB;&#x8D25;Boss&#x5E76;&#x5347;&#x7EA7; | &#x770B;&#x89C1;&#x65B0;&#x654C;&#x4EBA;</text>
+  <path d="M290 215L318 178L350 215M548 215L582 165L625 215" fill="#7b8797" stroke="#596579" stroke-width="2"/>
+
+  <path d="M250 230H650V630L570 680H330L250 630Z" fill="url(#ore)" class="wall"/>
+  <text x="275" y="270" class="region">&#x533A;&#x57DF;3 &#x957F; | 22m</text>
+  <text x="275" y="294" class="small">&#x81EA;&#x7531;&#x6398;&#x8FDB; | &#x6700;&#x7EC8;&#x6210;&#x957F;</text>
+  <path d="M390 230V266H510V230" fill="#e8edf3" stroke="#275f98" stroke-width="4"/>
+  <text x="450" y="253" text-anchor="middle" class="small">&#x6D1E;&#x53E3;</text>
+  <ellipse cx="450" cy="365" rx="145" ry="85" fill="#ffffff" fill-opacity=".38" stroke="#8d2d29" stroke-width="3" stroke-dasharray="10 7"/>
+  <text x="450" y="292" text-anchor="middle" class="small">Boss&#x6218;&#x6597;&#x533A; 14m x 8m</text>
+  <circle cx="450" cy="365" r="42" class="enemy"/>
+  <text x="450" y="371" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="700">BOSS</text>
+  <text x="600" y="363" class="label">Boss&#x5835;&#x4F4F;&#x51FA;&#x53E3;</text>
+  <circle cx="330" cy="500" r="17" class="enemy"/>
+  <text x="330" y="505" text-anchor="middle" fill="#ffffff" font-size="10">&#x602A;</text>
+  <circle cx="565" cy="520" r="17" class="enemy"/>
+  <text x="565" y="525" text-anchor="middle" fill="#ffffff" font-size="10">&#x602A;</text>
+  <circle cx="400" cy="585" r="17" class="enemy"/>
+  <text x="400" y="590" text-anchor="middle" fill="#ffffff" font-size="10">&#x602A;</text>
+  <rect x="500" y="570" width="100" height="30" rx="6" fill="#8d6ad9" stroke="#553b9f" stroke-width="2"/>
+  <text x="550" y="590" text-anchor="middle" fill="#ffffff" font-size="11">&#x6700;&#x7EC8;Build</text>
+  <path class="branch" d="M450 635C410 580 330 560 330 500"/>
+  <path class="branch" d="M450 635C500 590 565 570 565 520"/>
+
+  <line x1="300" y1="660" x2="600" y2="660" class="trigger"/>
+  <text x="670" y="664" class="small">&#x8FDB;&#x5165;&#x533A;&#x57DF;3&#x540E; &#x533A;&#x57DF;2&#x574D;&#x584C;</text>
+
+  <path d="M330 680L360 662L392 683L425 660L460 684L495 662L530 684L570 660L600 680V760H300V700Z" fill="url(#hardOre)" class="wall"/>
+  <text x="450" y="716" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="700">&#x539A;&#x77FF;&#x969C;&#x788D;&#x533A; | 4m</text>
+  <text x="450" y="740" text-anchor="middle" fill="#ffffff" font-size="11">&#x9A8C;&#x8BC1;&#x5DE5;&#x4F5C;&#x53F0;2&#x5347;&#x7EA7;</text>
+
+  <path d="M300 760H600L640 800V1080H260V800Z" fill="url(#ore)" class="wall"/>
+  <text x="285" y="825" class="region">&#x533A;&#x57DF;2 &#x4E2D; | 18m</text>
+  <path d="M300 770H215V842H300" fill="#f7f8fa" stroke="#303948" stroke-width="6"/>
+  <rect x="235" y="790" width="55" height="32" rx="4" class="bench"/>
+  <text x="200" y="810" text-anchor="end" class="label">&#x5DE5;&#x4F5C;&#x53F0;2</text>
+  <ellipse cx="450" cy="915" rx="125" ry="75" fill="#ffffff" fill-opacity=".38" stroke="#8d2d29" stroke-width="3" stroke-dasharray="10 7"/>
+  <circle cx="450" cy="915" r="34" class="enemy"/>
+  <text x="450" y="921" text-anchor="middle" fill="#ffffff" font-size="13">&#x5FC5;&#x7ECF;&#x7CBE;&#x82F1;</text>
+  <circle cx="335" cy="1000" r="16" class="enemy"/>
+  <text x="335" y="1005" text-anchor="middle" fill="#ffffff" font-size="9">&#x602A;</text>
+  <circle cx="555" cy="1015" r="16" class="enemy"/>
+  <text x="555" y="1020" text-anchor="middle" fill="#ffffff" font-size="9">&#x602A;</text>
+  <rect x="390" y="1010" width="120" height="30" rx="6" fill="#8d6ad9" stroke="#553b9f" stroke-width="2"/>
+  <text x="450" y="1030" text-anchor="middle" fill="#ffffff" font-size="11">Build</text>
+
+  <line x1="260" y1="1080" x2="640" y2="1080" class="trigger"/>
+  <text x="670" y="1084" class="small">&#x8FDB;&#x5165;&#x533A;&#x57DF;2&#x540E; &#x533A;&#x57DF;1&#x574D;&#x584C;</text>
+  <path d="M330 1080H215V1155H330" fill="#f7f8fa" stroke="#303948" stroke-width="6"/>
+  <rect x="245" y="1102" width="62" height="32" rx="4" class="bench"/>
+  <text x="200" y="1123" text-anchor="end" class="label">&#x5DE5;&#x4F5C;&#x53F0;1</text>
+
+  <path d="M330 1080H570L610 1120V1380H290V1120Z" fill="url(#ore)" class="wall"/>
+  <text x="315" y="1175" class="region">&#x533A;&#x57DF;1 &#x77ED; | 14m</text>
+  <rect x="395" y="1225" width="110" height="30" rx="6" fill="#8d6ad9" stroke="#553b9f" stroke-width="2"/>
+  <text x="450" y="1245" text-anchor="middle" fill="#ffffff" font-size="11">&#x9996;&#x6B21;Build</text>
+  <circle cx="375" cy="1280" r="16" class="enemy"/>
+  <text x="375" y="1285" text-anchor="middle" fill="#ffffff" font-size="9">&#x602A;</text>
+  <circle cx="525" cy="1280" r="16" class="enemy"/>
+  <text x="525" y="1285" text-anchor="middle" fill="#ffffff" font-size="9">&#x602A;</text>
+
+  <path d="M350 1380H550L590 1435L550 1510H350L310 1435Z" fill="#e8edf3" class="wall"/>
+  <polygon points="450,1410 460,1435 487,1437 466,1454 473,1480 450,1466 427,1480 434,1454 413,1437 440,1435" fill="#67a8e8" stroke="#275f98" stroke-width="3"/>
+  <text x="450" y="1492" text-anchor="middle" class="label">&#x73A9;&#x5BB6;&#x51FA;&#x751F;&#x533A;</text>
+
+  <path class="route" d="M450 1430V1340C450 1280 425 1230 450 1170V1100C450 1035 420 980 450 915V830C450 780 430 735 450 690V610C450 550 475 500 450 440V420"/>
+  <text x="665" y="1220" class="small">&#x76EE;&#x6807;&#x65B9;&#x5411; | &#x975E;&#x9884;&#x6316;&#x9053;&#x8DEF;</text>
+
+  <rect x="825" y="105" width="235" height="360" rx="12" fill="#f7f8fa" stroke="#aeb7c4" stroke-width="2"/>
+  <text x="845" y="140" class="region">&#x56FE;&#x4F8B;</text>
+  <rect x="845" y="165" width="44" height="28" fill="url(#ore)" stroke="#b47a28"/>
+  <text x="905" y="184" class="small">&#x666E;&#x901A;&#x77FF;&#x4F53;</text>
+  <rect x="845" y="210" width="44" height="28" fill="url(#hardOre)" stroke="#7e4b20"/>
+  <text x="905" y="229" class="small">&#x539A;&#x77FF;&#x969C;&#x788D;&#x533A;</text>
+  <circle cx="867" cy="270" r="14" class="enemy"/>
+  <text x="905" y="275" class="small">&#x654C;&#x4EBA;</text>
+  <rect x="845" y="305" width="44" height="26" rx="4" class="bench"/>
+  <text x="905" y="323" class="small">&#x5DE5;&#x4F5C;&#x53F0;</text>
+  <line x1="845" y1="363" x2="889" y2="363" class="trigger"/>
+  <text x="905" y="368" class="small">&#x574D;&#x584C;&#x89E6;&#x53D1;&#x7EBF;</text>
+  <line x1="845" y1="407" x2="889" y2="407" class="route"/>
+  <text x="905" y="412" class="small">&#x76EE;&#x6807;&#x65B9;&#x5411;</text>
+
+  <rect x="825" y="500" width="235" height="370" rx="12" fill="#f7f8fa" stroke="#aeb7c4" stroke-width="2"/>
+  <text x="845" y="535" class="region">&#x5236;&#x4F5C;&#x7EA6;&#x675F;</text>
+  <text x="845" y="575" class="small">1. All regions start full of ore</text>
+  <text x="845" y="610" class="small">2. Player digs the walkable path</text>
+  <text x="845" y="645" class="small">3. Elite is mandatory</text>
+  <text x="845" y="680" class="small">4. Old region collapses behind</text>
+  <text x="845" y="715" class="small">5. Boss blocks the visible exit</text>
+  <text x="845" y="750" class="small">6. CTA area is not playable</text>
+  <text x="845" y="805" class="small">R1 width: 14-16m</text>
+  <text x="845" y="830" class="small">R2 width: 18-20m</text>
+  <text x="845" y="855" class="small">R3 width: 20-22m</text>
+</svg>

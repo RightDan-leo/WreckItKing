@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>扇形矿床布局示意</title>
+<style>
+    html, body { margin: 0; background: #0b0914; }
+    canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="820" height="1000"></canvas>
+<script>
+const TIERS = [
+    { name: "低级矿", r: 18.5, t: 4.4, color: "#2fb98a", seg: 6, segSector: 3 },
+    { name: "中级矿", r: 27.5, t: 5.2, color: "#6a3bd0", seg: 8, segSector: 3 },
+    { name: "高级矿", r: 39, t: 6, color: "#d0522a", seg: 10, segSector: 4 }
+];
+const ARENA = 48;
+const HALF = 45 * Math.PI / 180;
+const INNER = 16.3;
+
+const cv = document.getElementById("c");
+const g = cv.getContext("2d");
+g.fillStyle = "#0b0914";
+g.fillRect(0, 0, cv.width, cv.height);
+
+function makeView(cx, cy, scale) {
+    return { x: wx => cx + wx * scale, y: wz => cy - wz * scale, s: scale, cx, cy };
+}
+
+// 世界方位角 0 = -Z（屏幕正上方），顺时针为正；转成 canvas 弧度（0 = +X，顺时针）。
+const ca = bearing => bearing - Math.PI / 2;
+
+function ringBand(v, inner, outer, from, to) {
+    g.beginPath();
+    g.arc(v.cx, v.cy, outer * v.s, ca(from), ca(to));
+    g.arc(v.cx, v.cy, inner * v.s, ca(to), ca(from), true);
+    g.closePath();
+}
+
+function hatch(v, inner, outer, from, to, color, step) {
+    g.save();
+    ringBand(v, inner, outer, from, to);
+    g.clip();
+    g.strokeStyle = color;
+    g.lineWidth = 1;
+    g.globalAlpha = 0.55;
+    const span = (outer + 4) * v.s;
+    for (let i = -span * 2; i < span * 2; i += step) {
+        g.beginPath();
+        g.moveTo(v.cx + i, v.cy - span);
+        g.lineTo(v.cx + i + span * 2, v.cy + span);
+        g.stroke();
+    }
+    g.restore();
+}
+
+function arenaBase(v) {
+    g.fillStyle = "#17131f";
+    g.beginPath();
+    g.arc(v.cx, v.cy, (ARENA + 4) * v.s, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#3a3348";
+    const dot = Math.max(2.5, v.s * 1.25);
+    for (let i = 0; i < 84; i++) {
+        const a = ca((i / 84) * Math.PI * 2);
+        const r = (ARENA + 1.4) * v.s;
+        g.beginPath();
+        g.arc(v.cx + Math.cos(a) * r, v.cy + Math.sin(a) * r, dot, 0, Math.PI * 2);
+        g.fill();
+    }
+}
+
+function drawTiers(v, sector, hatchStep) {
+    for (const tier of TIERS) {
+        const inner = tier.r - tier.t / 2;
+        const outer = tier.r + tier.t / 2;
+        const from = sector ? -HALF : 0;
+        const to = sector ? HALF : Math.PI * 2;
+        ringBand(v, inner, outer, from, to);
+        g.fillStyle = tier.color;
+        g.globalAlpha = 0.34;
+        g.fill();
+        g.globalAlpha = 1;
+        hatch(v, inner, outer, from, to, tier.color, hatchStep);
+
+        g.strokeStyle = "rgba(255,255,255,0.32)";
+        g.lineWidth = 1;
+        const count = sector ? tier.segSector : tier.seg;
+        for (let i = sector ? 1 : 0; i < count; i++) {
+            const a = sector
+                ? ca(-HALF + (i / count) * HALF * 2)
+                : ca((i / count) * Math.PI * 2);
+            g.beginPath();
+            g.moveTo(v.cx + Math.cos(a) * inner * v.s, v.cy + Math.sin(a) * inner * v.s);
+            g.lineTo(v.cx + Math.cos(a) * outer * v.s, v.cy + Math.sin(a) * outer * v.s);
+            g.stroke();
+        }
+    }
+}
+
+// ================= 主图：改后的扇形 =================
+const main = makeView(400, 400, 5.85);
+arenaBase(main);
+
+g.fillStyle = "rgba(90, 210, 255, 0.09)";
+g.beginPath();
+g.arc(main.cx, main.cy, INNER * main.s, 0, Math.PI * 2);
+g.fill();
+g.beginPath();
+g.moveTo(main.cx, main.cy);
+g.arc(main.cx, main.cy, (ARENA - 2) * main.s, ca(-HALF), ca(HALF));
+g.closePath();
+g.fill();
+
+drawTiers(main, true, 9);
+
+// 扇形两侧岩壁
+g.fillStyle = "#514761";
+for (const side of [-1, 1]) {
+    for (let r = INNER - 1.5; r < ARENA; r += 2.3) {
+        const a = ca(side * HALF);
+        g.beginPath();
+        g.arc(main.cx + Math.cos(a) * r * main.s, main.cy + Math.sin(a) * r * main.s, 6, 0, Math.PI * 2);
+        g.fill();
+    }
+}
+
+// 凿出来的隧道
+g.fillStyle = "#100d18";
+for (const tier of TIERS) {
+    const w = 1.7 / tier.r;
+    ringBand(main, tier.r - tier.t / 2, tier.r + tier.t / 2, -w, w);
+    g.fill();
+}
+
+// 张角虚线与标注
+g.strokeStyle = "rgba(255,255,255,0.32)";
+g.lineWidth = 1.5;
+g.setLineDash([6, 5]);
+for (const side of [-1, 1]) {
+    const a = ca(side * HALF);
+    g.beginPath();
+    g.moveTo(main.cx, main.cy);
+    g.lineTo(main.cx + Math.cos(a) * (ARENA + 2) * main.s, main.cy + Math.sin(a) * (ARENA + 2) * main.s);
+    g.stroke();
+}
+g.setLineDash([]);
+g.beginPath();
+g.arc(main.cx, main.cy, 13.4 * main.s, ca(-HALF), ca(HALF));
+g.strokeStyle = "#ffffff";
+g.lineWidth = 2;
+g.stroke();
+g.fillStyle = "#ffffff";
+g.font = "bold 17px 'Microsoft YaHei'";
+g.textAlign = "center";
+g.fillText("90°", main.x(0), main.y(14.6));
+
+// 主城范围只描边，不填色盖住扇形起点
+g.strokeStyle = "rgba(255, 209, 102, 0.55)";
+g.lineWidth = 1.5;
+g.setLineDash([4, 4]);
+g.beginPath();
+g.arc(main.cx, main.cy, 11 * main.s, 0, Math.PI * 2);
+g.stroke();
+g.setLineDash([]);
+g.fillStyle = "#ffd166";
+g.beginPath();
+g.arc(main.x(0), main.y(0), 6, 0, Math.PI * 2);
+g.fill();
+g.fillStyle = "#5ad2ff";
+g.beginPath();
+g.arc(main.x(0), main.y(10.5), 6.5, 0, Math.PI * 2);
+g.fill();
+
+g.font = "15px 'Microsoft YaHei'";
+g.fillStyle = "#ffd166";
+g.textAlign = "left";
+g.fillText("主城", main.x(0) + 12, main.y(-1.4) + 5);
+g.fillStyle = "#5ad2ff";
+g.textAlign = "right";
+g.fillText("出生点", main.x(0) - 12, main.y(9.6) + 5);
+
+// 挖掘方向箭头，摆在扇形外侧
+g.strokeStyle = "#ffd166";
+g.lineWidth = 3.5;
+const ax = main.x(-30);
+g.beginPath();
+g.moveTo(ax, main.y(2));
+g.lineTo(ax, main.y(28));
+g.stroke();
+g.beginPath();
+g.moveTo(ax, main.y(31.5));
+g.lineTo(ax - 6.5, main.y(27));
+g.lineTo(ax + 6.5, main.y(27));
+g.closePath();
+g.fillStyle = "#ffd166";
+g.fill();
+g.save();
+g.translate(ax - 13, main.y(15));
+g.rotate(-Math.PI / 2);
+g.textAlign = "center";
+g.font = "bold 16px 'Microsoft YaHei'";
+g.fillText("一路朝屏幕上方凿穿三层", 0, 0);
+g.restore();
+
+// 半径刻度
+g.font = "13px 'Microsoft YaHei'";
+g.textAlign = "center";
+for (const tier of TIERS) {
+    const a = ca(HALF * 0.68);
+    g.fillStyle = tier.color;
+    g.fillText(
+        `r=${tier.r}`,
+        main.cx + Math.cos(a) * tier.r * main.s,
+        main.cy + Math.sin(a) * tier.r * main.s + 5
+    );
+}
+
+g.fillStyle = "#efe9fb";
+g.font = "bold 22px 'Microsoft YaHei'";
+g.textAlign = "left";
+g.fillText("改后：三层矿只朝屏幕上方展开成扇形", 36, 40);
+
+// ================= 缩略：现状 =================
+const mini = makeView(688, 706, 1.72);
+arenaBase(mini);
+drawTiers(mini, false, 5);
+g.strokeStyle = "rgba(255, 209, 102, 0.45)";
+g.lineWidth = 1;
+g.beginPath();
+g.arc(mini.cx, mini.cy, 11 * mini.s, 0, Math.PI * 2);
+g.stroke();
+g.fillStyle = "#8d84a8";
+g.font = "13px 'Microsoft YaHei'";
+g.textAlign = "center";
+g.fillText("现状：完整闭合的三道环", mini.cx, mini.cy + (ARENA + 20) * mini.s);
+
+// ================= 图例 =================
+g.textAlign = "left";
+g.font = "15px 'Microsoft YaHei'";
+let ly = 656;
+const legend = [
+    ["#2fb98a", "低级矿　半径 18.5　厚 4.4　高 3.4　守卫 6 段 → 3 段"],
+    ["#6a3bd0", "中级矿　半径 27.5　厚 5.2　高 4.3　守卫 8 段 → 3 段"],
+    ["#d0522a", "高级矿　半径 39.0　厚 6.0　高 5.4　守卫 10 段 → 4 段"],
+    ["#514761", "扇形两侧的岩壁：不可破坏，堵掉绕行路线"],
+    ["rgba(90, 210, 255, 0.42)", "可行走区域：主城那圈整圆 + 朝上的 90° 扇形"],
+    ["#100d18", "凿出来的隧道：穿过一层才能走到下一层"]
+];
+for (const [color, text] of legend) {
+    g.fillStyle = color;
+    g.fillRect(36, ly - 12, 24, 15);
+    g.strokeStyle = "rgba(255,255,255,0.2)";
+    g.lineWidth = 1;
+    g.strokeRect(36, ly - 12, 24, 15);
+    g.fillStyle = "#cfc7e0";
+    g.fillText(text, 70, ly);
+    ly += 29;
+}
+
+g.fillStyle = "#8b83a0";
+g.font = "14px 'Microsoft YaHei'";
+g.fillText("规则不变：每层依然是一道完整的墙，凿穿一层才能进下一层，守卫照旧冻在墙里。", 36, 872);
+g.fillText("半径、厚度、高度、格网密度、硬度、金币掉落全部不动，只把切向范围从 360° 收成 90°。", 36, 900);
+g.fillText("段数按弧长等比减少，每段守卫之间的间距和现在保持一致。", 36, 928);
+g.fillStyle = "#6f6883";
+g.fillText("张角 90° 是暂定值：低级矿那道墙横向 29 米宽，高级矿 61 米。要更像走廊就收窄，要更开阔就放宽。", 36, 966);
+</script>
+</body>
+</html>
