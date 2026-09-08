@@ -25,6 +25,7 @@
 | flame-dragon-finale | 火焰巨龙出场演出与下载结算 | in-progress | [tasks/flame-dragon-finale.spec.md](./tasks/flame-dragon-finale.spec.md) |
 | sealed-vein-offering | 封印献祭：金币的终点站与玩家亲手破封 | in-progress | [tasks/sealed-vein-offering.spec.md](./tasks/sealed-vein-offering.spec.md) |
 | progression-ladder-rework | 推进阶梯重排：武器台进城、城与武器/锄头严格交替、钻石单轨、龙蛋定点 | done（低级矿消耗率一条未达标，见该文第 8.1 节） | [tasks/progression-ladder-rework.spec.md](./tasks/progression-ladder-rework.spec.md) |
+| power-spike-tuning | 战力台阶调参：镐头改近战、守卫血量重排、小龙补强 | done | [tasks/power-spike-tuning.spec.md](./tasks/power-spike-tuning.spec.md) |
 
 ## 调参入口
 
@@ -59,7 +60,7 @@
 | `ROVER_LANES` | 三条矿层走廊里巡游杂兵的血量、掉金币、伤害、体型 | 掉落与伤害立即；血量和体型要重载 |
 | `ROVER_RANGE` / `ROVER_PATROLS` | 巡游杂兵多近才扑上来 / 追多远放弃 / **扑上来时的速度倍率** / **追出走廊多远放弃**；两只怪离主路多远、巡逻多长（按米，除以走廊半径才换成角度） | 追击那几根立即；巡逻布局要重载 |
 | `GUARD_CHASE` | 守卫激怒后的**速度倍率**、**主城外沿禁区**（怪一律不得进城）。追多远放弃 / 多近会醒在 `ORE_TIERS[].monster` 里，两个数必须拉开才有滞回 | 立即 |
-| `WEAPON_LEVELS` | 钻石武器四级的攻击距离加成、溅射半径与伤害比例、HUD 战力 | 立即 |
+| `WEAPON_LEVELS` | 钻石武器三级的伤害、攻击距离**增减**（Lv1 是负的：镐头是近战，弓才把距离拉回中程）、溅射半径与伤害比例、HUD 战力 | 立即 |
 | `ARPG` | 受击硬直、完美闪避窗口与破绽、时间微顿、狂暴换档、武器线的守卫钻石增量 | 立即 |
 
 价格只在 `ECONOMY_PRESETS`（锄头 / 孵化台 / 进化 / 武器 / 封印献祭）和 `CITY_STAGES`（主城四级）两处，别的地方没有第二份。锄头的最高等级不写死，等于 `ECON.pickaxeCost.length + 1`——现在是三档宝石价、封顶 4 级。
@@ -93,6 +94,14 @@
 坑在 `marks()` 上：它背后的 `markRun` 全局只有五个触发点——地贴完成、破封、孵化、终局、CTA。**打死守卫不算事件，横扫炸出六十个金币不算事件，金币连续进账不算事件。** 拿它算「最长空档」会稳定虚报约 7 秒，而且虚报的正好是战斗和挖矿密集的那些段，据此调价格会调错地方（主城 Lv2 和 Lv3 那两条「空窗」就是这么误报出来的，见 `mining-shard-tiers.spec.md` 末尾）。
 
 补法是每 0.25 秒采一次 `__wik.state()`，从数值变化反推事件，不用改游戏文件（战斗线常年在改 `killEnemy` 一带，加 `markRun` 容易撞车）：`enemies` 变小是击杀，`drops` 单步涨 ≥ 20 是横扫引爆，`carryingEgg` 由假变真是捡蛋。把这些和 `marks()` 并进一条时间线再算间隔。
+
+### 量战斗数值：`__wik.duel()`
+
+`__wik.duel("high", { weapon: 3, pet: "evo" })` 指定战力打一只满血守卫，返回击杀耗时、DPS、掉血、挨打次数。
+
+**不要拿完整自动局的数据调伤害。** 同一档的实测 eDPS 会从 567 飘到 3725，飘的全是交战质量（有没有在躲、被击退推出去几次、路上跑了多久），不是战力——在那种噪音里调数值等于瞎调。`duel` 把变量锁死：守卫复位成满血、玩家只做「够不着就走过去，够得着就站定」，同一组数值跑三遍结果一致。
+
+它测的是**输出上限**，不是真实体感（它不躲也不风筝）。真实体感照旧由完整自动局给，两个数一起看才有意义。
 
 ## 继续复用的 Specs
 

@@ -402,6 +402,30 @@
         }
         .egg-lock-core { fill: rgba(255, 213, 74, 0.16); }
         #egg-lock.charging .egg-lock-core { fill: rgba(255, 213, 74, 0.3); }
+        /* 蛋头上的名牌。做成 #egg-lock 的子元素而不是另一个 fixed 层，是为了白拿
+           那枚锁形环已经验过的两件事：屏幕投影定位，和出画/拾取时的隐藏——
+           父元素的内联 opacity 会一起盖住它，不用再写一份同步逻辑。
+           bottom:100% 把它顶到环的上方，也就是「蛋头上」。 */
+        #egg-tip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            margin-bottom: 7px;
+            padding: 5px 12px;
+            /* 竖屏窄，两行叠起来比一行长句更好读 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+            white-space: nowrap;
+            background: rgba(8, 7, 18, 0.78);
+            border: 1px solid rgba(200, 139, 255, 0.5);
+            border-radius: 13px;
+            transform: translateX(-50%);
+        }
+        /* 紫色和蛋壳、和拾取时的爆点（0xc08bff）对上；环是黄的，管的是进度，两件事分开 */
+        #egg-tip b { color: #d8b4ff; font-size: 13px; font-weight: 900; letter-spacing: 1px; }
+        #egg-tip span { color: rgba(255,255,255,0.82); font-size: 11px; font-weight: 700; }
         #restart {
             position: fixed;
             right: 12px;
@@ -700,6 +724,7 @@
                 <circle class="egg-lock-bar" cx="36" cy="36" r="28"></circle>
                 <circle class="egg-lock-core" cx="36" cy="36" r="18"></circle>
             </svg>
+            <div id="egg-tip"><b>龙蛋</b><span>走近搬回主城</span></div>
         </div>
         <div id="damage-layer"></div>
         <div id="cinematic-bars"></div>
@@ -758,7 +783,14 @@
                 mineRange: 3.4,
                 attackCooldown: 0.5,
                 mineCooldown: 0.3,
-                playerMaxHp: 100,
+                // 100 → 130（2026-09-08）。血量只降不升、下限 15（见 damagePlayer），
+                // 所以这两个数之差就是**一整局的挨打预算**。战斗调硬之后实测这份预算
+                // 在第 53 秒就见底了：血条从那儿起一路钉在下限上，剩下 60% 的流程里
+                // 挨不挨打对它毫无影响，等于把这根条废掉。
+                //
+                // 抬上限而不是压守卫伤害：伤害压下去，第一场那记「打怪是要付代价的」
+                // 就也一起没了，而那正是这一版要立起来的东西。
+                playerMaxHp: 130,
                 playerMinHp: 15,
                 startCoins: 10,
                 coinDwell: 0.16,
@@ -831,9 +863,24 @@
                     glow: 0x4ff0bb,
                     monster: {
                         kind: "swipe",
-                        hp: 850,
+                        // ── 2026-09-08：850 → 2200，伤害 3 → 7 ──────────────────
+                        // 这一只是全局唯一一场**弓箭之前**的仗，它得独自承担「战斗是一回事、
+                        // 而你现在不够强」这句话。850 血在 Lv1 是三下的事（1.8 秒、掉 3 点血），
+                        // 预警、前摇、破绽、狂暴一个都来不及出现——狂暴挂在 30% 血上，
+                        // 一场 1.8 秒的仗里它闪过去玩家根本没看见。
+                        //
+                        // 3400 让它变成实测八秒、五六个前摇回合的仗。中间量过 2200，只有 3.7 秒：
+                        // 血量抬上去 TTK 不是线性涨的——仗越长，三连击第三下落满的次数越多，
+                        // 平均 DPS 反而从 395 升到 595，所以要多加一截才买得到那几秒。
+                        //
+                        // 伤害 3 → 5。抬是因为 3 点在一百格的血条上是一根头发丝，玩家不会
+                        // 意识到自己在挨打；只抬到 5 是因为血量只降不升、下限 15
+                        // （见 damagePlayer），整局预算就 85 点。中间试过 7，实测这一场就掉 57 点：
+                        // 第一场仗吃掉三分之二预算，之后血条整局钉在下限上，等于把它废掉了。
+                        // 而且开局十五秒内把血条打到见底，在 playable 里读起来像「我要输了」。
+                        hp: 3400,
                         speed: 2.4,
-                        damage: 3,
+                        damage: 5,
                         drop: 6,
                         scale: 0.72,
                         color: 0x2c9f79,
@@ -870,7 +917,10 @@
                     glow: 0xb478ff,
                     monster: {
                         kind: "slam",
-                        hp: 3600,
+                        // 3600 → 5800。玩家第一次见到这一层时手上是 Lv2 的弓，
+                        // 3600 血打 3.4 秒——刚够看清它会砸地和冲锋两招，来不及各躲一次。
+                        // 5800 抬到六秒半，两招至少各来一轮，「这一层的怪不一样」才立得住。
+                        hp: 7850,
                         speed: 2.6,
                         damage: 7,
                         drop: 12,
@@ -939,7 +989,10 @@
                     glow: 0xffa04f,
                     monster: {
                         kind: "fan",
-                        hp: 9000,
+                        // 9000 → 13000。这一层有三招轮换（扇形 / 跳劈 / 冲锋），
+                        // 而三种躲法互相冲突正是它的设计目标——9000 血在 Lv3 + 小龙下
+                        // 只有 3.9 秒，三招轮不满一圈，那套设计等于白做。
+                        hp: 13000,
                         speed: 2.8,
                         damage: 11,
                         drop: 22,
@@ -1275,12 +1328,12 @@
                 // 于是「城 → 设施 → 城 → 设施」严格交替，玩家任何时刻只有一个下一步。
                 // 进化台不再挂在城上，改由武器台满级放出——它和孵化、进化抢同一个钻石池，
                 // 三张并排亮着时实测进化会被拖后 36.5 秒。整条钻石单轨见 forgeWindowOpen。
-                { level: 2, radius: 9.8, cost: 20, unlock: "forge", label: "主城" },
+                { level: 2, radius: 9.8, cost: 15, unlock: "forge", label: "主城" },
                 // 65 降到 38。锄头推迟到 Lv3 之后，意味着拿到二级锄头前只能挖低级矿，
                 // 而低级矿整层清空只有 89 金币——按 65 算，城 Lv2 + Lv3 要 85，等于逼玩家
                 // 把第一道矿墙铲平（96%）。这个游戏的前提是凿隧道不是清场：矿被挖光之后
                 // 锄头升级的横扫桶没东西可清，分层凿穿的观感也塌了。38 把占比压回 65%。
-                { level: 3, radius: 12.2, cost: 38, unlock: "pickaxe", label: "主城" },
+                { level: 3, radius: 12.2, cost: 20, unlock: "pickaxe", label: "主城" },
                 { level: 4, radius: 14.6, cost: 100, unlock: "hatchery", label: "主城" }
             ];
 
@@ -1292,7 +1345,7 @@
                 // 买完 Lv3 时 resolveTileCost 返回 0，completePickaxe 顺手把地贴撤掉，于是 A 版
                 // 照旧封顶三级。第四级是宝石版专用的——它是高级宝石唯一的出口。
                 { level: 1, power: 6, power_score: 1241 },
-                { level: 2, power: 12, power_score: 2056 },
+                { level: 2, power: 10, power_score: 2056 },
                 { level: 3, power: 20, power_score: 3480 },
                 // 第四级不解锁新矿层（封印矿凿不开），它买的是速度：高级矿硬度 5，
                 // 三级锄头一下凿四格、四级一下凿六格，剩下那大半环高级矿会明显开始融化。
@@ -1317,7 +1370,8 @@
             // （火苗对镐头）去区分——这个代价后来被判定太贵，弓因此变成了独立手持物，
             // 地贴图标也跟着从火苗换成弓（见 TILE_DEFS.forge 和 drawTileIcon 的 "bow"）。
             const WEAPON_LEVELS = [
-                // reach 加在 CONFIG.attackRange 上；splash 是三连击第三下的溅射半径
+                // reach 是相对 CONFIG.attackRange 的**增减**（Lv1 是负的，见下面那段）；
+                // splash 是三连击第三下的溅射半径
                 // （0 = 不溅开），splashRatio 是溅到旁边那些怪身上的伤害比例。
                 //
                 // 最高档的附加在规划里写的是「完美闪避后的反击变成范围扇击」，落地时换成了
@@ -1334,7 +1388,22 @@
                 // 从 11 刀变 15 刀——那是一次没人要求过的战斗节奏改动。所以改成查表，
                 // **两个端点原样保留**：235 / 425 / 805，递进反而更陡，配「越来越炫」更顺。
                 // 七只守卫的血量因此仍然一格都不用动。
-                { level: 1, damage: 235, reach: 0, splash: 0, splashRatio: 0, power_score: 0 },
+                // ── 2026-09-08：Lv1 的 reach 从 0 改成 -3.0 ────────────────────
+                // 这是「弓箭之前打怪一点都不困难」的病根，而且它一直伪装成一个数值问题。
+                //
+                // reach 是加在 CONFIG.attackRange（4.8）上的，Lv1 写 0 意味着**镐头的
+                // 有效交战距离和弓差不多**：4.8 + 1.4 瞄准容差 = 6.2 米。而低级守卫的
+                // attackRange 只有 2.4 米。也就是说玩家在解锁弓之前就已经在无伤放风筝了——
+                // 实测第一场仗 1.8 秒、掉 3 点血，整套预警/前摇/破绽一个都没用上。
+                //
+                // 改成 -3.0 之后 Lv1 是 1.8 + 1.4 = 3.2 米，真近战：低级守卫（2.4）够得着，
+                // 中级（3.0）持平，高级（3.7）反过来压着玩家打。于是弓在 Lv2 给的那 6.8 米
+                // 才成为一次**能当场感觉到的**变化——不是「伤害数字变大了」，
+                // 是「我不用再站在它爪子底下了」。
+                //
+                // 这个数放在武器表里而不是改 CONFIG.attackRange，是为了不碰 ?arpg=0：
+                // reach 整个挂在 weaponEnabled() 下面，回滚路径照旧读 4.8。
+                { level: 1, damage: 235, reach: -3, splash: 0, splashRatio: 0, power_score: 0 },
                 { level: 2, damage: 425, reach: 0.6, splash: 0, splashRatio: 0, power_score: 980 },
                 // 顶格取原第四级那组溅射（3.4 / 0.55），不是原第三级的 2.6 / 0.3——
                 // 端点保留是这次改动的原则，特效和伤害都照这条办。
@@ -1416,9 +1485,18 @@
                     // 供给侧的增量挂在 ARPG.guardGemBonus，那儿有整笔账。
                     // 两级升级（三档武器）。原先三级、共 18 颗，砍掉最后一级的缘由见
                     // WEAPON_LEVELS 那段：钻石单轨之后它只能落在进化后面，买完没仗打。
-                    // 现在钻石总开销 4+6+8+14 = 32，供给 44，余 12——那 12 颗要靠调
-                    // ARPG.guardGemBonus 或抬进化价吸收，钻石 HUD 不像宝石那样会自己隐藏。
-                    weaponCost: [4, 6],
+                    //
+                    // ── 2026-09-08：Lv3 从 6 抬到 12 ────────────────────────────
+                    // 上面那条「余 12 颗要想办法吸收」的待办，和「小龙那一档要能被单独
+                    // 感觉到」是同一件事，一起解决。
+                    //
+                    // 6 的时候实测破壳在 92.0 秒、Lv3 在 94.7 秒——中间隔 2.7 秒，
+                    // 而且**没有任何一场仗**：玩家手上的钻石在孵化那一刻就够买 Lv3 了，
+                    // 于是这两次变强在体感上糊成一次。抬到 12 之后他得先用「只带小龙、
+                    // 武器还是 Lv2」的状态打赢一只高级守卫，小龙那份贡献才有地方被看见。
+                    //
+                    // 钻石总开销随之变成 4+12+8+14 = 38，供给 44，余 6。
+                    weaponCost: [4, 12],
                     // 钻石接手宠物线。守卫数按每层的段数来：低 2、中 2、高 3，一共七只。
                     // 供给 2×3 + 2×4 + 3×4 = 26，花 8 + 14 = 22，余 4。
                     // 只打低中两档拿 14 颗，付完孵化台剩 6，够不着 14 的进化——
@@ -1474,9 +1552,20 @@
                 // 伤害查 WEAPON_LEVELS[].damage——它砍成三级之后数列不再等距，公式表达不了。
                 // perWeapon 已经删掉：留着就是一个拖了不生效、还不报错的旋钮。
                 playerDamage: { base: 235, perPickaxe: 190, evolvedBonus: 220, comboMultiplier: 3.35 },
+                // ── 2026-09-08：小龙的输出整体抬起来 ────────────────────────────
+                // 破壳原先在数值上几乎不存在：180 / 0.85 秒 = 212 DPS，而那一刻玩家自己
+                // 是 1957 DPS，小龙占 11%。实测高级守卫带不带它是 4.6 秒对 3.9 秒——
+                // 「多了个帮手」这件事玩家只能从画面上看出来，从手感上看不出来。
+                //
+                // 抬到 520 / 0.45 秒 = 1156 DPS（约玩家 Lv3 的一半），进化后 1150 / 0.3 秒 = 3833。
+                //
+                // 优先压间隔而不是加单发，是实测逼出来的：先试过 460 / 0.62（同样 742 DPS），
+                // 高级守卫那场只快了 15%，中级那场**一点没快**。原因是火球有飞行时间，
+                // 而一场两三秒的仗里小龙只来得及打两三发，单发再大也有一发落在怪已经死了之后。
+                // 打得密才吃得满，顺带也更像「有个东西在替你打」——单发大只是偶尔闪一下。
                 pet: {
-                    hatched: { damage: 180, fireInterval: 0.85, range: 10 },
-                    evolved: { damage: 620, fireInterval: 0.42, range: 14, powerGain: 3200 }
+                    hatched: { damage: 520, fireInterval: 0.45, range: 10 },
+                    evolved: { damage: 1150, fireInterval: 0.3, range: 14, powerGain: 3200 }
                 },
                 // 固定赏金，不按剩余格数结算。按格算的话低级矿值 94、中级矿值 187 金币，
                 // 而整局全部开销才 315——两次横扫白送 89% 的经济，Lv3 到手游戏就结束了。
@@ -1490,7 +1579,28 @@
                     // 横扫收尾补的尾数不铺开也不错峰：它是在玩家脚下一次性补齐的，
                     // 错峰会让最后几枚拖在爆炸结束之后飞回来。
                     sweepTail: { burst: 1.1, dwell: 0.02, ghostRatio: 2.5 },
-                    guardGem: { burst: 1.3, spread: 1.6, stagger: 0.06 }
+                    // 守卫掉的钻石。这一组的调法和金币不一样：金币讲的是「一大笔冲回背上」，
+                    // 钻石一次只有四到八颗、每一颗都对着一次具体升级，讲的是「打完了，
+                    // 地上散着几颗，然后被收走」——中间那一拍必须看得见。
+                    //
+                    // 原先是 burst 1.3 / 无 dwell（吃 CONFIG.coinDwell 的 0.16）/ stagger 0.06。
+                    // 量出来的病根不是「躺得不够久」——「至少有一颗在地上」的窗口有 0.85 秒，
+                    // 不算短。病根是**三拍互相重叠**：滞空 0.97 + 躺地 0.85 + 飞回 0.95 = 2.77 秒
+                    // 的分段总和挤在 1.98 秒里，任一时刻总有几颗在空中、几颗在地上、几颗已经
+                    // 在飞回去了。「八颗全都躺在地上」那一拍实测只有 0.05 秒——等于从没出现过，
+                    // 所以整段读成一条连续的喷泉接吸走，而不是「掉了一地，然后被收走」。
+                    //
+                    // 三个数一起动才拆得开这个重叠：
+                    //   burst 1.3 → 0.85   抛得低，滞空从 0.97 缩到 0.77，落地时间也更集中
+                    //   dwell 无 → 0.8     躺地够久，久到最后一颗落地时第一颗还没起飞
+                    //   stagger 0.06 → 0.02  起飞几乎同步（错峰上限 = stagger×颗数），
+                    //                        八颗一起被吸走，而不是拖成一条尾巴
+                    // spread 1.6 → 2.6 是补偿：burst 同时管纵向和横向，抛低了横向甩距也跟着缩，
+                    // 散开改由出生点的偏移承担，实测落点包围盒不变（5.6 米上下）。
+                    //
+                    // 结果：全都在地上 0.05 → 0.73 秒，而总时长 1.98 → 2.10 秒，几乎没变。
+                    // 扫过 dwell 1.0 那一档（全在地 0.83 秒），总时长要涨到 2.37，不值。
+                    guardGem: { burst: 0.85, spread: 2.6, stagger: 0.02, dwell: 0.8 }
                 }
             };
 
@@ -1677,7 +1787,10 @@
                         { path: "BALANCE.playerDamage.evolvedBonus", label: "进化加成", min: 0, max: 2000, step: 5 },
                         { path: "BALANCE.playerDamage.comboMultiplier", label: "三连击倍率", min: 1, max: 10, step: 0.05 },
                         { path: "CONFIG.attackCooldown", label: "攻击间隔（秒）", min: 0.1, max: 1.5, step: 0.01 },
-                        { path: "CONFIG.attackRange", label: "攻击距离", min: 1, max: 10, step: 0.1 }
+                        { path: "CONFIG.attackRange", label: "攻击距离（基准，武器等级在这上面加减）", min: 1, max: 10, step: 0.1 },
+                        // 上限减下限就是一整局的挨打预算——血量只降不升。
+                        { path: "CONFIG.playerMaxHp", label: "血量上限", min: 30, max: 400, step: 10 },
+                        { path: "CONFIG.playerMinHp", label: "血量下限（打不死人）", min: 0, max: 100, step: 5 }
                     ]
                 },
                 {
@@ -1722,19 +1835,20 @@
                 },
                 {
                     label: "钻石武器线（宝石版）",
-                    note: "锄头只管挖、武器只管打。价格和守卫掉落增量是即时的；等级里的 reach 和溅射也是即时的（下一次挥击就吃新值）。这条线整个挂在 ARPG 开关下面，?arpg=0 时锻造台不出现、伤害退回锄头驱动、守卫的钻石增量也一起消失——多发的钻石没有出口，只会变成 HUD 上花不掉的余额。整笔账：供给 26+18=44，支出 孵化 8 + 进化 14 + 武器 18 = 40，余 4。",
+                    note: "锄头只管挖、武器只管打。价格和守卫掉落增量是即时的；等级里的 reach 和溅射也是即时的（下一次挥击就吃新值）。这条线整个挂在 ARPG 开关下面，?arpg=0 时锻造台不出现、伤害退回锄头驱动、守卫的钻石增量也一起消失——多发的钻石没有出口，只会变成 HUD 上花不掉的余额。整笔账：供给 26+18=44，支出 孵化 8 + 进化 14 + 武器 4+12=16，共 38，余 6。Lv1 的 reach 是负的（镐头是近战），那一根决定弓箭之前有多难。",
                     fields: [
                         { path: "ECONOMY_PRESETS.gem.weaponCost.0", label: "武器 Lv2（钻石）", min: 0, max: 30, step: 1 },
                         { path: "ECONOMY_PRESETS.gem.weaponCost.1", label: "武器 Lv3（钻石）", min: 0, max: 30, step: 1 },
-                        { path: "ECONOMY_PRESETS.gem.weaponCost.2", label: "武器 Lv4（钻石）", min: 0, max: 30, step: 1 },
                         { path: "ARPG.guardGemBonus.low", label: "低级守卫 钻石增量", min: 0, max: 20, step: 1 },
                         { path: "ARPG.guardGemBonus.mid", label: "中级守卫 钻石增量", min: 0, max: 20, step: 1 },
                         { path: "ARPG.guardGemBonus.high", label: "高级守卫 钻石增量", min: 0, max: 20, step: 1 },
-                        { path: "WEAPON_LEVELS.1.reach", label: "Lv2 攻击距离加成 米", min: 0, max: 3, step: 0.1 },
+                        // 负数：镐头是近战，弓才把距离拉回中程。这一根和「武器 Lv1 伤害」
+                        // 一起决定弓箭之前那一场有多难，是这一版调硬度的主旋钮。
+                        { path: "WEAPON_LEVELS.0.reach", label: "Lv1 攻击距离增减 米（负=近战）", min: -4, max: 2, step: 0.1 },
+                        { path: "WEAPON_LEVELS.1.reach", label: "Lv2 攻击距离增减 米", min: -4, max: 3, step: 0.1 },
+                        { path: "WEAPON_LEVELS.2.reach", label: "Lv3 攻击距离增减 米", min: -4, max: 3, step: 0.1 },
                         { path: "WEAPON_LEVELS.2.splash", label: "Lv3 溅射半径 米", min: 0, max: 8, step: 0.1 },
-                        { path: "WEAPON_LEVELS.2.splashRatio", label: "Lv3 溅射伤害比例", min: 0, max: 1, step: 0.05 },
-                        { path: "WEAPON_LEVELS.3.splash", label: "Lv4 溅射半径 米", min: 0, max: 8, step: 0.1 },
-                        { path: "WEAPON_LEVELS.3.splashRatio", label: "Lv4 溅射伤害比例", min: 0, max: 1, step: 0.05 }
+                        { path: "WEAPON_LEVELS.2.splashRatio", label: "Lv3 溅射伤害比例", min: 0, max: 1, step: 0.05 }
                     ]
                 },
                 {
@@ -1788,6 +1902,11 @@
                         { path: "CONFIG.coinDwell", label: "金币落地停留（秒）", min: 0, max: 1, step: 0.01 },
                         { path: "CONFIG.coinFlyToBackDuration", label: "金币回背时长（秒）", min: 0.05, max: 1.5, step: 0.01 },
                         { path: "CONFIG.coinFlyStagger", label: "金币错峰（秒）", min: 0, max: 0.3, step: 0.005 },
+                        // 钻石单独一组。它和金币的读法不同（见 BALANCE.coinToss.guardGem），
+                        // 拖 burst 会同时改滞空和横向甩距，散不散主要看 spread。
+                        { path: "BALANCE.coinToss.guardGem.dwell", label: "钻石落地停留（秒）", min: 0, max: 2, step: 0.01 },
+                        { path: "BALANCE.coinToss.guardGem.burst", label: "钻石抛射初速倍率", min: 0.2, max: 2.5, step: 0.05 },
+                        { path: "BALANCE.coinToss.guardGem.spread", label: "钻石落点铺开倍率", min: 0.2, max: 5, step: 0.1 },
                         { path: "CONFIG.zonePaymentInterval", label: "地贴扣钱间隔（秒）", min: 0.005, max: 0.2, step: 0.005 },
                         { path: "CONFIG.zonePaymentTicks", label: "地贴扣钱笔数", min: 5, max: 200, step: 1 }
                     ]
@@ -1882,10 +2001,9 @@
                 // 孵化台推迟到 Lv4（半径 14.6）才亮，8.86 对它绰绰有余。
                 // 对调而不是另找位置：这两个槽位之间、以及和广场火炬的间距都是验过的。
                 hatchery: { x: -4.2, z: -7.8 },
-                evolve: { x: 0, z: -9.4 },
-                // 三张吃钻石的贴（锻造、孵化、进化）都在西半边和中轴北端，东侧那张
-                // （锄头，吃宝石）和中轴那张（主城，吃金币）各归各。玩家攒哪种钱该往哪走，
-                // 靠站位就能记住。
+                // 城里吃钻石的两张贴（锻造、孵化）都在西半边，东侧那张（锄头，吃宝石）
+                // 和中轴那张（主城，吃金币）各归各。玩家攒哪种钱该往哪走，靠站位就能记住。
+                // 进化台原先也在这一组里（0,-9.4），2026-09-08 挪到封印走廊去了，见下面。
                 //
                 // 广场装饰按「避开地贴的方块范围」摆（见 PLAZA_TORCHES 那段），两根火炬在
                 // ±6.4,-6.8 和 ±6.2,-9.8。曾经有一版把贴子放到离火炬只有 1.7~1.9 米的地方，
@@ -1905,6 +2023,35 @@
                 seal: {
                     x: Math.cos(SECTOR.center) * SEAL_OFFER_RADIUS,
                     z: Math.sin(SECTOR.center) * SEAL_OFFER_RADIUS
+                },
+                // 进化台跟着献祭点摆在封印走廊里，不在城里。
+                //
+                // 挪它是为了砍掉终局那趟回头路：玩家在半径 38 处手动凿穿高级矿，然后要走回
+                // 半径 6~9 的城里买锄头 Lv4、付进化，再走回 41.8 破封。实测这一趟 23.5 秒、
+                // 149 米，占整局 19% 的时长和 29% 的路程，而且是一段纯粹的往返。
+                // 挪过来之后终局是一路向外的：凿穿高级矿 → 就地打怪攒钻石 → 进化 → 破封。
+                //
+                // 是挪而不是取消：CTA 文案写死了「你的巨龙已经进化完成」，对峙构图里也站着
+                // 那条进化后的龙，所以进化必须仍然排在破封之前。
+                //
+                // 沿弧偏 4.4 米——两张贴各宽 3.4，错开 4.4 留出一米的缝，读成前后两个站点，
+                // 而不是同一张贴换了图标。偏西（角度小于中线）接着城里那条「吃钻石的靠西」。
+                evolve: {
+                    x: Math.cos(SECTOR.center - 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS,
+                    z: Math.sin(SECTOR.center - 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS
+                },
+                // 锄头地贴的第二个槽位，只在最后一级（Lv4）用，见 tileSlot()。
+                //
+                // 前三级绝不能挪出城：Lv2、Lv3 是凿开中级矿和高级矿的钱，而这条走廊在
+                // 那两道墙之后——开局就把贴摆在外面，玩家买不到 Lv2、也就凿不开中级矿，
+                // 整局当场死锁。只有 Lv4 不解锁任何矿层（高级矿 requiredPickaxe 是 3，
+                // 封印矿是 5，永远够不着），它才可以跟着终局搬到墙根。
+                //
+                // 摆在献祭点东侧，进化台在西侧——接着城里那条「锄头（吃宝石）在东、
+                // 吃钻石的在西」的站位规律，三张贴在走廊里仍然按同一套读。
+                "pickaxe-last": {
+                    x: Math.cos(SECTOR.center + 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS,
+                    z: Math.sin(SECTOR.center + 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS
                 }
             };
 
@@ -2075,6 +2222,8 @@
             // 看门狗会认为「还没摆过」，在玩家脚下又摆一张 0/150 的新贴——实测它一直
             // 挂到演出里，压在对峙那一拍的画面上。
             let sealOffered = false;
+            // 「封印矿凿不开」那句提示说过没有。见 rejectMine——它是一次性信息。
+            let sealedHintShown = false;
             let petEvolved = false;
             let eggSpawned = false;
             let carryingEgg = false;
@@ -2119,6 +2268,10 @@
 
             let joystick = null;
             let audioCtx = null;
+            // 每个音色实际发了几声。音效的失效方式是**静默**的——上下文挂在 suspended
+            // 上时 playSound 照常跑完、一声不响也不报错，而「听不到」这件事自动化测不了。
+            // 记下调用次数，至少能把「没接线」和「接了但没出声」分开。
+            const soundLog = {};
             let cameraShake = 0;
             // 完美闪避那一下的时间微顿剩余量。用真实时间递减、缩放的是喂给 update 的 dt，
             // 所以微顿本身不会被自己拖长。sim() 手动步进时不经过 animate，因此测试里不生效。
@@ -2232,6 +2385,28 @@
                         hintShown: zone.hintShown,
                         x: +zone.position.x.toFixed(2),
                         z: +zone.position.z.toFixed(2)
+                    })),
+                    // 掉落物的三拍（抛出 toss / 躺地 idle / 飞回 toBack）各占多久，
+                    // 光看钱包数字读不出来——它只在第三拍结束时才跳。调抛射手感时
+                    // 要看的恰恰是中间那一拍有没有存在感。给坐标而不是给某个距离：
+                    // 「散没散开」要按落点的包围盒量，而包围盒的基准（尸体位置）
+                    // 只有调用方知道。
+                    // 音效自查。state 是关键的那一项：suspended 意味着接线全对、
+                    // 但一声都没出去，而这是听不出区别的两种「有音效」。
+                    audio: () => ({
+                        ctx: audioCtx ? audioCtx.state : "none",
+                        sampleRate: audioCtx ? audioCtx.sampleRate : 0,
+                        played: Object.assign({}, soundLog),
+                        totalCalls: Object.values(soundLog).reduce((a, b) => a + b, 0)
+                    }),
+                    drops: () => coinDrops.map(coin => ({
+                        kind: coin.gem ? "gem" : coin.shard ? `shard-${coin.grade}` : "coin",
+                        state: coin.state,
+                        ghost: coin.ghost,
+                        dwell: +coin.dwell.toFixed(2),
+                        x: +coin.mesh.position.x.toFixed(2),
+                        y: +coin.mesh.position.y.toFixed(2),
+                        z: +coin.mesh.position.z.toFixed(2)
                     })),
                     band: () => {
                         const p = player.position;
@@ -2670,6 +2845,104 @@
                             parts: Object.entries(playerBow.userData)
                                 .filter(([, v]) => v && v.isObject3D)
                                 .map(([k, v]) => `${k}:${v.visible ? "on" : "off"}`)
+                        };
+                    },
+                    // 战斗数值台架。调武器/宠物那一版数值时加的：一次自动局里同一档的
+                    // 实测 eDPS 能从 567 飘到 3725，飘的全是交战质量（有没有在躲、被击退
+                    // 推出去几次、路上跑了多久），不是战力。拿那种数去调伤害等于在噪音里调。
+                    //
+                    // 所以把变量锁死：指定战力、把守卫复位成满血、玩家站定不动让它自己贴上来。
+                    // 剩下的差异就只剩「这一档打这只怪要多久」。
+                    //
+                    // 站定不动是刻意的——它是那四种打法里唯一可复现的一种（见 spec 里
+                    // 「一局一次页面重载」那段踩过的坑）。它测的是 DPS 上限，不是真实体感；
+                    // 真实体感照旧由完整自动局给。两个数一起看才有意义。
+                    duel: (tierId, opts = {}) => {
+                        if (opts.weapon) {
+                            weaponLevel = Math.min(WEAPON_LEVELS.length, opts.weapon);
+                            applyWeaponAppearance();
+                        }
+                        if (opts.pet && !pet) createPet();
+                        if (opts.pet === "evo" && pet && !petEvolved) evolvePet();
+
+                        const node = oreNodes.find(n => n.tierId === tierId && n.monster);
+                        if (!node) return null;
+                        if (!node.monsterRevealed) revealOreMonster(node);
+                        const foe = node.monster;
+                        const d = foe.userData;
+                        // 打死过的也能再用：这台架一跑几十场，而每层只有两三只守卫。
+                        if (!d.alive) {
+                            d.alive = true;
+                            d.attackable = true;
+                            scene.add(foe);
+                            enemies.push(foe);
+                        }
+                        // 复位要连位置和位移状态一起清。只清血量的话，上一场把它冲锋出去
+                        // 七米、或者钉在拴绳边界上的那个位置会带进下一场，于是同一组数值
+                        // 能测出 10 秒和「90 秒打不完」两种结果（踩过）。
+                        d.hp = d.maxHp;
+                        d.frenzy = false;
+                        d.attackState = "chasing";
+                        d.attackTimer = 0;
+                        d.emerging = 0;
+                        d.activeSkill = null;
+                        d.dash = null;
+                        d.detour = null;
+                        d.closeFail = 0;
+                        d.knockback = null;
+                        d.stagger = 0;
+                        if (d.homePosition) foe.position.copy(d.homePosition);
+                        foe.position.y = 0;
+                        cancelHazardsFrom(foe);
+                        syncHealthBar(foe);
+                        playerHp = CONFIG.playerMaxHp;
+                        attackSequence = 0;
+                        attackTimer = 0;
+
+                        // 站在它正内侧 gap 米处。方向取城心，保证落点在玩家凿出来的通道里
+                        // 而不是实心矿墙里——被墙顶开的话这一场测的就是「走位」不是「输出」。
+                        const gap = opts.gap === undefined ? 4 : opts.gap;
+                        const dir = foe.position.clone().setY(0).normalize();
+                        const spot = foe.position.clone().setY(0).addScaledVector(dir, -gap);
+                        player.position.copy(spot);
+                        moveVelocity.set(0, 0, 0);
+                        stick.x = 0; stick.z = 0; stick.magnitude = 0;
+                        autoRun = false;
+
+                        const limit = opts.max || 90;
+                        const dt = 1 / 60;
+                        let t = 0;
+                        let hits = 0;
+                        let lastHp = playerHp;
+                        window.__wik.hold = true;
+                        while (t < limit && d.alive && d.hp > 0) {
+                            // 够不着就走过去，够得着就站定。不躲、不风筝——这台架测的是
+                            // 输出上限，不是走位水平。但也不能纯站着：守卫会被击退、会冲锋
+                            // 出去，站着不动的话有些组合会永远打不完，那种 null 不是数值结论。
+                            const away = flatDistance(foe.position, player.position) - playerAttackRange();
+                            if (away > 0) {
+                                const step = foe.position.clone().sub(player.position).setY(0).normalize();
+                                stick.x = step.x; stick.z = step.z; stick.magnitude = 1;
+                            } else {
+                                stick.x = 0; stick.z = 0; stick.magnitude = 0;
+                            }
+                            simElapsed += dt;
+                            update(dt, simElapsed);
+                            t += dt;
+                            if (playerHp < lastHp) { hits++; lastHp = playerHp; }
+                        }
+                        stick.x = 0; stick.z = 0; stick.magnitude = 0;
+                        renderer.render(scene, camera);
+                        return {
+                            tier: tierId,
+                            weapon: weaponLevel,
+                            pet: pet ? (petEvolved ? "evo" : "pet") : "-",
+                            dmg: playerHitDamage(),
+                            maxHp: d.maxHp,
+                            ttk: d.hp > 0 ? null : Number(t.toFixed(2)),
+                            dps: d.hp > 0 ? null : Math.round(d.maxHp / t),
+                            hpLost: Math.round(CONFIG.playerMaxHp - playerHp),
+                            hits
                         };
                     },
                     combat: () => ({
@@ -4557,8 +4830,26 @@
                 context.restore();
             }
 
+            // 地贴该摆哪个槽位。只有锄头有两个槽：最后一级在封印走廊，其余在城里
+            // （理由见 TILE_SLOTS["pickaxe-last"]）。创建和重新布防两条路都走这里，
+            // 免得「第一次摆在城里、升级后挪出去」的规则各写一份。
+            function tileSlot(id) {
+                if (id === "pickaxe" && ECON.pickaxeCost &&
+                    pickaxeLevel >= ECON.pickaxeCost.length) return TILE_SLOTS["pickaxe-last"];
+                return TILE_SLOTS[id];
+            }
+
+            function moveZone(zone, slot) {
+                if (zone.position.x === slot.x && zone.position.z === slot.z) return;
+                zone.group.position.set(slot.x, 0, slot.z);
+                zone.position.copy(zone.group.position);
+                // 挪完重新判一次：玩家不可能站在刚出现在三十米外的那张贴上，
+                // 沿用上一处的 requiresReentry 会让他走到新位置后还得先走出去一趟。
+                zone.requiresReentry = isPlayerInsideZonePosition(zone.group.position);
+            }
+
             function createZone(id, cost, onComplete) {
-                const slot = TILE_SLOTS[id];
+                const slot = tileSlot(id);
                 const { canvas, context, texture } = createTileTexture();
                 const group = new THREE.Group();
                 group.position.set(slot.x, 0, slot.z);
@@ -5002,7 +5293,12 @@
                 if (zone) {
                     const nextCost = resolveTileCost("pickaxe");
                     if (!nextCost) removeZone(zone);
-                    else resetZone(zone, nextCost);
+                    else {
+                        resetZone(zone, nextCost);
+                        // 买到倒数第二级时这一步会把贴挪到封印走廊——最后一级不解锁矿层，
+                        // 没有理由再把玩家从矿脉深处叫回城里一趟。
+                        moveZone(zone, tileSlot("pickaxe"));
+                    }
                 }
                 releaseCityGate("pickaxe");
                 updateUI();
@@ -5011,7 +5307,6 @@
                 const maxed = pickaxeLevel > (ECON.pickaxeCost ? ECON.pickaxeCost.length : 0);
                 toast(maxed ? `锄头已满级，${tier.name}也能快速开采` : `锄头升级，现在能凿开${tier.name}了`);
                 defer(1.5, spawnSweepCharge);
-                maybeShowSealOffering();
             }
 
             function completeHatchery() {
@@ -5180,21 +5475,22 @@
                 maybeShowSealOffering();
             }
 
-            // 献祭点的两个前置：锄头满级、宠物已进化。谁后到听谁的，所以
-            // completePickaxe、completeEvolve 和看门狗三处都调一次，幂等。
+            // 献祭点只有一个前置：宠物已进化。对峙的构图里站着玩家和他的龙，CTA 文案也
+            // 写死了「你的巨龙已经进化完成」——不卡这条，两边会一起对不上。
             //
-            // 要锄头满级，是因为这整条改动的立论就是给 Lv4 一个解锁物——它从「只提速」
-            // 变成「唯一硬到能碰封印矿的锄头」，那 35 秒才买到了东西。
-            // 要宠物进化，是因为对峙的构图里站着玩家和他的龙，CTA 文案也写死了
-            // 「你的巨龙已经进化完成」；不卡这条，两边会一起对不上。
+            // 原先还要「锄头满级」，理由是给 Lv4 一个解锁物。这条 2026-09-08 去掉了：
+            // 高级矿只要 Lv3（requiredPickaxe: 3），所以玩家凿穿高级矿时手里是 Lv3，
+            // 这道前置的唯一效果就是把他赶回城里买一次 Lv4 再走回来。Lv4 仍然值得买
+            // ——提速，外加那一次横扫直接清空三层矿——只是不再拦着终局。
+            //
+            // 现在只有 completeEvolve 和看门狗两处调它，仍然幂等。
             function maybeShowSealOffering() {
                 if (!ECON.sealOffering || finaleStarted) return;
                 if (!petEvolved) return;
-                if (pickaxeLevel <= (ECON.pickaxeCost ? ECON.pickaxeCost.length : 0)) return;
                 if (sealOffered) return;
                 sealOffered = true;
                 showTile("seal");
-                toast("锄头已经硬到能碰封印矿，把金币砸进封印");
+                toast("巨龙已进化，把金币砸进封印");
                 playSound("warn");
             }
 
@@ -5226,6 +5522,11 @@
                 buildPopEffect(getOreImpactPoint(node), 34, 0xff8a3c);
                 cameraShake = Math.max(cameraShake, 0.9);
                 playSound("crack");
+                // 收掉所有还亮着的地贴。以前不用管：残留的贴全在城里，离破封点四十米，
+                // 天然落在画面外。现在锄头 Lv4 和进化台都摆在这条走廊上（见 TILE_SLOTS），
+                // 锄头那张离破封点只有 4.4 米——玩家一路没踩它就破了封的话，
+                // 一张 0/3 的地贴会横在巨龙挣出来那一拍的画面里。
+                for (const zone of zones) zone.group.visible = false;
                 defer(0.5, startFlameDragonIntro);
             }
 
@@ -5966,10 +6267,18 @@
                 cameraShake = Math.max(cameraShake, 0.16);
                 playSound("clang");
                 node.rejectShake = 0.32;
-                // 献祭收款期间玩家就站在墙根底下砸墙，这句话此刻是错的——墙马上就开了。
-                // clang 和弹开留着（他确实在砸），只把提示压掉。
-                if (node.tier.sealed && zones.some(zone => zone.id === "seal" && !zone.complete)) return;
                 if (blockedMineHint > 0) return;
+                // 封印墙的提示有两条额外的闸。clang 和弹开都不受影响——玩家确实在砸墙。
+                if (node.tier.sealed) {
+                    // 献祭收款期间这句话是错的：墙马上就开了。
+                    if (zones.some(zone => zone.id === "seal" && !zone.complete)) return;
+                    // 说过一次就够。「里面封着的东西还在动」是一次性信息，而玩家现在会在
+                    // 这堵墙底下待上二十来秒——锄头 Lv4 和进化台都摆在这条走廊上
+                    // （见 TILE_SLOTS），付款期间自动索敌一直咬着封印墙，
+                    // 按 3.2 秒一次能刷出七八条重复的。
+                    if (sealedHintShown) return;
+                    sealedHintShown = true;
+                }
                 blockedMineHint = 3.2;
                 // 三种凿不动的处置完全不同——回城升级、就地打一架、根本挖不开——话必须分开说，
                 // 否则玩家会跑回城里对着一把买不起或压根不存在的锄头发呆。
@@ -6281,6 +6590,14 @@
             // 这时直接指矿，箭头就是一条穿墙而过的直线，照着走只会撞在城墙上。
             // 先把他领到走廊口，进了走廊再指矿。
             function guideThroughGate(target) {
+                // 目标本来就在自由圆里就不用绕。走廊口是为「目标在矿区、玩家在城里」
+                // 那一种情形准备的；对城内目标它会把玩家一路拽向 15.5 米外的谷口，
+                // 离目标越来越远，而走开之后偏角更大、绕行更不肯松手——实测锄头 Lv2
+                // 那张城内贴付到 2/4 就再也回不去，整局卡死在城里。
+                //
+                // 锄头贴有两个槽位（城里 / 封印走廊，见 tileSlot），是它把这条判断
+                // 变成必需的：同一个调用点两种情形都要走对。
+                if (Math.hypot(target.x, target.z) <= SECTOR.freeRadius) return target;
                 const radius = Math.hypot(player.position.x, player.position.z);
                 if (radius > SECTOR.freeRadius + 1) return target;
                 const delta = signedAngleDelta(Math.atan2(player.position.z, player.position.x), SECTOR.center);
@@ -7651,7 +7968,9 @@
                 // 也会让玩家改去刷杂兵而不是打守卫——而守卫才是矿墙推进的那道门。
                 if (data.type === "rover") {
                     dropCoins(target.position.clone().setY(1.4), data.config.drop);
-                    playSound("break");
+                    // 杂兵叫得高一点。守卫是这条线的门，走廊里这六只是路过的，
+                    // 同一个音色差一个音高就够把两者分开，不用再造一个音。
+                    playSound("slay", 1.3);
                 }
 
                 if (data.type === "monster") {
@@ -7662,7 +7981,7 @@
                     if (ECON.guardKeepsCoins || !gemDrop) dropCoins(at, data.config.drop);
                     // 钻石抛得比金币散一点，让它在一堆金币里显出来。
                     if (gemDrop) dropCoins(at, gemDrop, Object.assign({ kind: "gem" }, BALANCE.coinToss.guardGem));
-                    playSound("break");
+                    playSound("slay");
                 }
             }
 
@@ -9311,9 +9630,16 @@
                     const geometry = shard ? shared.shard : gem ? shared.gem : shared.coin;
                     const material = shard ? shared.shardMats[grade] : gem ? shared.gemMat : shared.coinMat;
                     const mesh = new THREE.Mesh(geometry, material);
-                    // 宝石抛得比金币大一号：它一次只掉一颗，混在同时崩出来的一堆金币里
+                    // 矿石碎片抛得比金币大一号：它一次只掉一颗，混在同时崩出来的一堆金币里
                     // 按同样尺寸抛就认不出来了，而「这一下挖到宝石了」是必须读到的信息。
-                    mesh.scale.setScalar(shard ? 1.2 : 0.85);
+                    //
+                    // 钻石同理，但它撞的不是金币而是尸体碎块：守卫一死，buildDeathDebris 会喷
+                    // 十四块 tier.chunkColor 的碎石，寿命 1.1~1.6 秒——正好完整盖住钻石躺在
+                    // 地上的那 0.73 秒。低级档尤其糟：碎块 0x37d7a1 和钻石 0x5fe6ff 同属青色系
+                    // （中级紫、高级橙都不冲突），而低级档正是玩家第一次见到钻石的地方。
+                    // 颜色不能动（钻石的青要和 HUD 的货币图标对上），所以靠体积拉开：
+                    // 碎块是 0.22~0.46 的小方块，钻石给到 1.15 就能从那一堆里挑出来。
+                    mesh.scale.setScalar(shard ? 1.2 : gem ? 1.15 : 0.85);
                     mesh.position.copy(position).add(new THREE.Vector3(
                         (Math.random() - 0.5) * 1.2 * spread,
                         0.4 + Math.random() * 0.8,
@@ -9933,8 +10259,10 @@
                 const hatchery = hatcheryZone;
                 if (carryingEgg && ready(hatchery)) return hatchery.position.clone();
 
+                // 进化台在封印走廊里（见 TILE_SLOTS.evolve），所以和矿点、献祭点一样要走
+                // guideThroughGate：玩家此刻很可能还在城里，直接指过去就是一条穿城墙的直线。
                 const evolve = zones.find(zone => zone.id === "evolve" && !zone.complete);
-                if (ready(evolve)) return evolve.position.clone();
+                if (ready(evolve)) return guideThroughGate(evolve.position.clone());
 
                 // 锻造台排在宠物线之后、其余一切之前。
                 //
@@ -9965,8 +10293,9 @@
                 if (seal) return guideThroughGate(seal.position.clone());
 
                 // 交替顺序由 isZonePayable 保证，这里只需要按「先锄头后扩城」挑当前那一步。
+                // 最后一级的锄头贴在封印走廊里（见 tileSlot），所以也要走 guideThroughGate。
                 const pickaxe = zones.find(zone => zone.id === "pickaxe" && !zone.complete);
-                if (ready(pickaxe)) return pickaxe.position.clone();
+                if (ready(pickaxe)) return guideThroughGate(pickaxe.position.clone());
 
                 const upgrade = zones.find(zone => zone.id === "city-upgrade" && !zone.complete);
                 if (ready(upgrade)) return upgrade.position.clone();
@@ -10292,6 +10621,7 @@
             // pitch 是频率倍率。金币连着进账时靠它把音高一级级往上推——同一个「叮」重复二十遍
             // 是噪音，音阶往上爬才读得出「越拿越多」。
             function playSound(type, pitch = 1) {
+                soundLog[type] = (soundLog[type] || 0) + 1;
                 if (!audioCtx) return;
                 const now = audioCtx.currentTime;
                 const oscillator = audioCtx.createOscillator();
@@ -10305,6 +10635,16 @@
                     hit: { wave: "sawtooth", from: 180, to: 70, gain: 0.075, duration: 0.19 },
                     break: { wave: "sawtooth", from: 140, to: 42, gain: 0.1, duration: 0.42 },
                     clang: { wave: "square", from: 1240, to: 660, gain: 0.05, duration: 0.14 },
+                    // 敌人死亡。原先它和碎矿共用 break，而 break 同时还管横扫爆炸和巨龙破封——
+                    // 一个音干四份活，结果「打死一只守卫」和「凿穿一根矿柱」听上去一模一样。
+                    // 那不是缺音效，是有音效但不带信息，而守卫恰恰是钻石的唯一来源、
+                    // 也是矿墙推进的那道门，这一下必须能单独听出来。
+                    //
+                    // 和 break（140→42，一开口就在低频，读作石头）拉开的办法是起点抬高、
+                    // 扫得更长：300→48 是一声往下掉的叫，读作「一个活物没了」。
+                    // 游荡怪走同一个音色但 pitch 抬高（见 killEnemy）——体型小的叫得高，
+                    // 顺手把杂兵和守卫也分开了。
+                    slay: { wave: "sawtooth", from: 300, to: 48, gain: 0.11, duration: 0.52 },
                     coin: { wave: "sine", from: 880, to: 1320, gain: 0.045, duration: 0.1 },
                     upgrade: { wave: "sine", from: 420, to: 960, gain: 0.075, duration: 0.34 },
                     hurt: { wave: "square", from: 240, to: 90, gain: 0.07, duration: 0.19 },
