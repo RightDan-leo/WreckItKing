@@ -1312,10 +1312,10 @@
             // 切分改的是「谁驱动这个数」，不是数本身。（后来砍成三级，端点仍然保留，
             // 见 WEAPON_LEVELS 里那段。）
             //
-            // 不新增手持物。四级都是给手上那把镐附魔（见 applyWeaponAppearance），
-            // 一是模型和挥击动画都不用动，二是免了「矿工背着剑挖矿」的违和。
-            // 代价是「升武器」和「升锄头」在玩家眼里都是升镐子，靠地贴的名字和图标区分
-            // （锻造台 + 火焰，对锄头台的镐子图标）。
+            // 早先这条线不新增手持物，各级都是给手上那把镐附魔（省掉模型和挥击动画）。
+            // 代价是「升武器」和「升锄头」在玩家眼里都是升镐子，只能靠地贴的名字和图标
+            // （火苗对镐头）去区分——这个代价后来被判定太贵，弓因此变成了独立手持物，
+            // 地贴图标也跟着从火苗换成弓（见 TILE_DEFS.forge 和 drawTileIcon 的 "bow"）。
             const WEAPON_LEVELS = [
                 // reach 加在 CONFIG.attackRange 上；splash 是三连击第三下的溅射半径
                 // （0 = 不溅开），splashRatio 是溅到旁边那些怪身上的伤害比例。
@@ -1851,11 +1851,16 @@
                 pickaxe: { name: "升级锄头", icon: "pickaxe", color: 0x7fd4ff },
                 hatchery: { name: "孵化台", icon: "egg", color: 0xc08bff },
                 evolve: { name: "宠物进化", icon: "evolve", color: 0x66f0d0 },
-                // 锻造台。名字和图标都刻意避开「镐」这个字眼：它和锄头台收的是不同的钱、
-                // 买的是不同的东西，但升的是同一把镐子（武器线不给玩家第二件手持物），
-                // 两张贴要是都画着镐头，玩家会以为自己在同一件事上被收了两次钱。
-                // 赤红比 seal 的巨龙橙红更暗更红，和镐头附魔、溅射光圈同色系。
-                forge: { name: "锻造台", icon: "forge", color: 0xe8452a },
+                // 武器建造台。图标是弓，不是火苗。
+                //
+                // 火苗是「武器线还没有自己的手持物、两张贴升的都是同一把镐」那个时代留下的：
+                // 那时候画什么都不能画镐（会读成在同一件事上被收两次钱），于是退而求其次画了
+                // 锻造的火。现在弓是独立的手持物了，这张贴买的就是那把弓，图标直接画它——
+                // 「花这笔钱会得到什么」不再需要玩家去猜。
+                //
+                // color 在这儿是兜底：实际取色走 drawTile 里的 weaponArcColor(下一级)，
+                // 跟着买到的那一级走，和锄头台是同一套做法。
+                forge: { name: "武器建造台", icon: "bow", color: 0x8fd6ff },
                 // 唯一一张不在城里的地贴。取巨龙的橙红而不是别的颜色：玩家走到墙根时
                 // 这张贴和它背后那道封印墙、以及一分钟后从墙里钻出来的东西是同一个色系，
                 // 「这笔钱是花在它身上的」不用文字说。
@@ -3669,8 +3674,9 @@
                 for (const enemy of splashed) damageEnemy(enemy, share, share, false);
             }
 
-            // 溅射的地面光圈。橙红，和镐头附魔、锻造台地贴是同一个色系——
-            // 玩家得能把这一圈读成「我买的那件东西在起作用」，而不是又一个怪物预警。
+            // 溅射的地面光圈。橙红，和顶格那一级的箭矢弧光、以及买它时地贴上那把橙色的弓
+            // 同一个色系——玩家得能把这一圈读成「我买的那件东西在起作用」，
+            // 而不是又一个怪物预警。
             function spawnSplashRing(at, radius) {
                 const ring = new THREE.Mesh(
                     new THREE.RingGeometry(radius * 0.36, radius * 0.52, 32),
@@ -4363,9 +4369,14 @@
                 context.stroke();
                 context.setLineDash([]);
 
-                // 升级锄头的地贴用「升级后能开采的那层矿」的颜色，和手里的锄头共用同一套颜色语义。
-                const iconColor = zone.id === "pickaxe" ? pickaxeTier(pickaxeLevel + 1).glow : definition.color;
-                drawTileIcon(context, definition.icon, `#${iconColor.toString(16).padStart(6, "0")}`);
+                // 两张升级贴的图标都按「买完之后会变成什么」取色，不按当前状态：
+                // 锄头用升级后能开采的那层矿的颜色，弓用升级后箭矢弧光的颜色。
+                // 玩家在贴上看到的颜色，就是他付完钱之后在手上和屏幕上看到的那个颜色。
+                const nextWeapon = weaponLevel + 1;
+                const iconColor = zone.id === "pickaxe" ? pickaxeTier(pickaxeLevel + 1).glow
+                    : zone.id === "forge" ? weaponArcColor(nextWeapon)
+                    : definition.color;
+                drawTileIcon(context, definition.icon, `#${iconColor.toString(16).padStart(6, "0")}`, nextWeapon);
 
                 // 价格前面的货币标记：圆形金币 / 方形钻石 / 尖角菱形宝石。地贴是玩家判断
                 // 「该攒哪种钱」的唯一入口，光换数字不换形状会让人一路攒错。
@@ -4423,7 +4434,9 @@
                 context.closePath();
             }
 
-            function drawTileIcon(context, icon, color) {
+            // variant：同一个图标要按等级分档时用，语义统一是「这次付款会买到的那一级」。
+            // 目前只有弓在用。
+            function drawTileIcon(context, icon, color, variant) {
                 context.save();
                 context.translate(96, 78);
                 context.strokeStyle = color;
@@ -4473,29 +4486,54 @@
                     context.lineTo(-20, 4);
                     context.closePath();
                     context.stroke();
-                } else if (icon === "forge") {
-                    // 一簇火苗。整套图标里唯一填实的一个——旁边那张锄头台是两笔线，
-                    // 这一张要在余光里就和它分开（两张贴升的是同一把镐子，靠图标区分买的是什么）。
-                    // 外焰填实、内焰镂空，火的形状因此不用靠颜色也读得出。
+                } else if (icon === "bow") {
+                    // 一把搭着箭的弓，箭头朝右。variant 是**这次付款会买到的那一级**，
+                    // 不是当前等级——地贴回答的是「花这笔钱得到什么」。
+                    //
+                    // 弓臂朝左鼓、弦向右拉成 V、箭杆穿过弦：这三笔缺一不可。只画弓臂加弦
+                    // 会读成括号或月牙，箭杆是让它变成「弓」的那一笔。
                     context.beginPath();
-                    context.moveTo(0, -32);
-                    context.quadraticCurveTo(20, -10, 17, 6);
-                    context.quadraticCurveTo(14, 26, 0, 30);
-                    context.quadraticCurveTo(-14, 26, -17, 6);
-                    context.quadraticCurveTo(-20, -10, 0, -32);
-                    context.closePath();
-                    context.fill();
-                    context.save();
-                    context.globalCompositeOperation = "destination-out";
+                    context.moveTo(-8, -30);
+                    context.quadraticCurveTo(-38, 0, -8, 30);
+                    context.stroke();
+
+                    context.lineWidth = 4;
                     context.beginPath();
-                    context.moveTo(0, -6);
-                    context.quadraticCurveTo(8, 6, 6, 14);
-                    context.quadraticCurveTo(3, 22, 0, 23);
-                    context.quadraticCurveTo(-3, 22, -6, 14);
-                    context.quadraticCurveTo(-8, 6, 0, -6);
-                    context.closePath();
-                    context.fill();
-                    context.restore();
+                    context.moveTo(-8, -30);
+                    context.lineTo(2, 0);
+                    context.lineTo(-8, 30);
+                    context.stroke();
+
+                    context.lineWidth = 7;
+                    context.beginPath();
+                    context.moveTo(-20, 0);
+                    context.lineTo(24, 0);
+                    context.stroke();
+
+                    if (variant >= WEAPON_LEVELS.length) {
+                        // 顶格那一级买的是「第三箭命中会炸开」。箭头填实、再加两道迸线，
+                        // 和上一级的空心箭头在余光里就分得开——这张贴一共只出现两次，
+                        // 两次之间隔着七十秒，光靠颜色变化玩家记不住上一次长什么样。
+                        context.beginPath();
+                        context.moveTo(28, 0);
+                        context.lineTo(12, -11);
+                        context.lineTo(12, 11);
+                        context.closePath();
+                        context.fill();
+                        context.lineWidth = 4;
+                        for (const dy of [-1, 1]) {
+                            context.beginPath();
+                            context.moveTo(30, dy * 9);
+                            context.lineTo(38, dy * 17);
+                            context.stroke();
+                        }
+                    } else {
+                        context.beginPath();
+                        context.moveTo(14, -10);
+                        context.lineTo(26, 0);
+                        context.lineTo(14, 10);
+                        context.stroke();
+                    }
                 } else if (icon === "seal") {
                     // 一道竖着的裂缝。画成折线而不是闭合形状：地贴上其余四个图标都是
                     // 「一件东西」，这一个是「一道口子」，轮廓封起来就读成石头而不是裂开。
@@ -5129,8 +5167,9 @@
             //
             // 顶格取 0xffa23c（原四级时代最高那一档），不是 0xff6a2a。武器线砍成三级之后
             // 「>= 4」那条分支永远走不到，照抄的话最亮的颜色整局都不会出现。
-            function weaponArcColor() {
-                if (!weaponEnabled() || weaponLevel < WEAPON_LEVELS.length) return 0x8fd6ff;
+            // 不传等级就是「当前这一级」。地贴要传「下一级」——它画的是买完会得到什么。
+            function weaponArcColor(level = weaponLevel) {
+                if (!weaponEnabled() || level < WEAPON_LEVELS.length) return 0x8fd6ff;
                 return 0xffa23c;
             }
 
@@ -5257,7 +5296,7 @@
                         if (inside && !zone.hintShown && (!payable || scarce)) {
                             zone.hintShown = true;
                             if (!scarce) toast(zoneBlockedCopy(zone.id));
-                            else toast(currency === "shard" ? shardShortCopy(short, grade) : gemShortCopy(short, zone.id));
+                            else toast(currency === "shard" ? shardShortCopy(short, grade) : gemShortCopy(short));
                         }
                         continue;
                     }
@@ -5297,12 +5336,11 @@
             // 守卫堵路撤掉之后，玩家不会再被一堵凿不动的墙逼到怪面前，全靠这句话和箭头。
             // 所以要分两种说法：怪已经跳出来了就报「箭头指着它」，把提示和箭头绑成一件事；
             // 还冻在矿里就得先说凿墙，否则玩家会满地找一只根本还没出现的怪。
-            function gemShortCopy(short, id) {
+            // 武器台曾经有一句不承诺箭头的特例说法，因为它当时是可选支线、引导不为它指路。
+            // 钻石单轨之后它卡着下一级城和进化，`getGuideGoal` 的钻石缺口分支已经带上了它，
+            // 箭头是真会指过去的——特例撤掉，否则这句话反过来在少说一句真话。
+            function gemShortCopy(short) {
                 if (!nearestLivingGuard()) return `还差 ${short} 颗钻石，凿开矿墙叫醒里面的守卫`;
-                // 锻造台这一张不许承诺箭头。引导不为可选支线服务（getGuideGoal 的钻石缺口
-                // 分支只认锄头 / 孵化 / 进化那三张），照抄下面那句会当场说一句假话——
-                // 玩家抬头去找箭头，它指在别处。
-                if (id === "forge") return `还差 ${short} 颗钻石，守卫身上有`;
                 return `还差 ${short} 颗钻石，打倒守卫就能拿到，箭头指着它`;
             }
 
