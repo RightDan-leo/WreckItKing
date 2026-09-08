@@ -26,6 +26,7 @@
 | sealed-vein-offering | 封印献祭：金币的终点站与玩家亲手破封 | in-progress | [tasks/sealed-vein-offering.spec.md](./tasks/sealed-vein-offering.spec.md) |
 | progression-ladder-rework | 推进阶梯重排：武器台进城、城与武器/锄头严格交替、钻石单轨、龙蛋定点 | done（低级矿消耗率一条未达标，见该文第 8.1 节） | [tasks/progression-ladder-rework.spec.md](./tasks/progression-ladder-rework.spec.md) |
 | power-spike-tuning | 战力台阶调参：镐头改近战、守卫血量重排、小龙补强 | done | [tasks/power-spike-tuning.spec.md](./tasks/power-spike-tuning.spec.md) |
+| english-locale | 英文版：只换文案（`?lang=en`），玩法与数值逐位不动 | done | [tasks/english-locale.spec.md](./tasks/english-locale.spec.md) |
 
 ## 调参入口
 
@@ -73,6 +74,7 @@
 |------|------|
 | `?tune` | 显出左下角的调参按钮。不带这个参数时按钮是隐藏的 |
 | `?arpg=0` | 关掉整套 ARPG 战斗改造与钻石武器线，回落到改造前的伤害公式与守卫钻石掉落。**这是武器线和战斗深度唯一的回滚开关**，不需要动文件；细节见 `arpg-combat-overhaul.spec.md` |
+| `?lang=en` | 出英文版。**只换文案**，玩法、数值、几何逐位不动（已用确定性指纹验证）。调参面板不跟着翻，它是开发工具。细节见 `english-locale.spec.md` |
 | ~~`?econ=`~~ | 已失效，见上面那条注 |
 
 ### 本地服务器

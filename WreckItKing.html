@@ -763,6 +763,123 @@
         (() => {
             "use strict";
 
+            // ── 文案本地化 ────────────────────────────────────────────────
+            // ?lang=en 出英文版，其余一切照旧。只有文案换，数值、判定、时序一个不动——
+            // 英文版和中文版是同一份代码跑出来的同一局游戏。
+            //
+            // 查表的 key 直接用中文原文，没有另造 UI_TITLE 这类 id。原因是这个文件里
+            // 中文就是母版：留着中文当 key，call site 读起来还是一句人话，
+            // 漏翻的那一条也会原样显示中文（而不是显示一个 id），当场就看得见。
+            //
+            // 带插值的句子用 {name} 占位，中英两版各自决定占位落在句子哪个位置——
+            // 「凿开{ore}了」和「you can break {ore} now」词序不同，靠拼接是拼不出来的。
+            const LANG = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "zh";
+            const EN = {
+                // 界面与结算
+                "New Wreck It King - 火焰巨龙": "New Wreck It King - Flame Dragon",
+                "主城 Lv.1": "Stronghold Lv.1",
+                "龙蛋": "Dragon Egg",
+                "走近搬回主城": "Get close to carry it home",
+                "火焰巨龙 破封": "FLAME DRAGON UNSEALED",
+                "重新开始": "Restart",
+                "火焰巨龙破封而出": "The Flame Dragon Breaks Free",
+                "你的巨龙已经进化完成。下载游戏，带上它讨伐封印在矿脉深处的火焰巨龙。":
+                    "Your dragon has fully evolved. Download the game and take it to slay the Flame Dragon sealed deep in the veins.",
+                "立即下载，讨伐巨龙": "Download Now — Slay the Dragon",
+                "再玩一次": "Play Again",
+                "主城 Lv.{city}　锄头 Lv.{pickaxe}": "Stronghold Lv.{city} · Pickaxe Lv.{pickaxe}",
+
+                // 矿层名。这四个词会被塞进十来句话里，所以要短，且四个之间一眼分得开。
+                "低级矿": "Low-Grade Ore",
+                "中级矿": "Mid-Grade Ore",
+                "高级矿": "High-Grade Ore",
+                "封印矿": "Sealed Ore",
+
+                // 三种货币在英文里必须用三个不同的词，否则玩家分不清哪个进哪个账：
+                // 金币 Gold（挖矿）、宝石 Gem（矿里预埋，升锄头）、钻石 Diamond（守卫掉，买武器和宠物）。
+                // 代码里的 gem 指钻石、shard 指宝石，是历史命名，别照着英文名对号入座。
+                "宝石": "Gem",
+                "初级宝石": "Rough Gem",
+                "中级宝石": "Fine Gem",
+                "高级宝石": "Radiant Gem",
+
+                // 引导
+                "拖动移动，走进光圈建设主城": "Drag to move — enter the ring to build your stronghold",
+                "拖动摇杆移动，走进光圈建设主城": "Drag to move — enter the ring to build your stronghold",
+                "走进光圈，用背上的金币建设主城": "Step into the ring and spend your gold to build the stronghold",
+
+                // 主城
+                "主城建成，去矿区赚取金币": "Stronghold built — head to the mines for gold",
+                "主城升级到 Lv.{n}": "Stronghold upgraded to Lv.{n}",
+                "主城扩张，解锁升级锄头": "Stronghold expanded — pickaxe upgrades unlocked",
+                "主城扩张，解锁孵化台": "Stronghold expanded — hatchery unlocked",
+                "主城扩张，解锁宠物进化": "Stronghold expanded — pet evolution unlocked",
+                "主城扩张，解锁武器建造台——打怪掉的钻石在这儿换武器":
+                    "Stronghold expanded — weapon forge unlocked. Trade guard-dropped diamonds here",
+                "主城扩张": "Stronghold expanded",
+                "主城可以继续扩建了": "The stronghold can expand again",
+
+                // 锄头与宝石
+                "锄头已满级，{ore}也能快速开采": "Pickaxe maxed — even {ore} breaks fast now",
+                "锄头升级，现在能凿开{ore}了": "Pickaxe upgraded — you can break {ore} now",
+                "还差 {n} 颗{name}": "{n} more {name} needed",
+                "还差 {n} 颗{name}，{ore}里还埋着，箭头指着它":
+                    "{n} more {name} needed — still buried in {ore}, follow the arrow",
+                "{ore}已经挖空了，{name}不够就升不了这把锄头":
+                    "{ore} is mined out — without enough {name} this pickaxe can't level up",
+
+                // 武器线
+                "弓箭打造完成！现在可以远程射杀守卫了": "Bow forged! Now you can shoot guards from range",
+                "三连击最后一下会炸开，溅到旁边的怪": "the third hit now bursts and splashes nearby foes",
+                "威力再上一档": "power steps up another notch",
+                "弓箭强化满级，{gained}": "Bow fully enhanced — {gained}",
+                "弓箭强化完成，{gained}": "Bow enhanced — {gained}",
+                "还差 {n} 颗钻石，凿开矿墙叫醒里面的守卫":
+                    "{n} more diamonds needed — break the ore wall to wake the guard inside",
+                "还差 {n} 颗钻石，打倒守卫就能拿到，箭头指着它":
+                    "{n} more diamonds needed — drop the guard the arrow points to",
+
+                // 挖矿与矿层
+                "金币在矿床里，靠近自动开采": "Gold sits in the ore beds — get close to mine it",
+                "发现{ore}，收益更高但野怪更强": "{ore} found — richer rewards, tougher beasts",
+                "走廊尽头是{ore}，凿不开，里面封着东西":
+                    "{ore} seals off the corridor — it won't break, something is locked inside",
+                "先干掉守卫，才能继续凿这段{ore}": "Drop the guard before digging deeper into this {ore}",
+                "{ore}凿不开，里面封着的东西还在动": "{ore} won't break — whatever is sealed inside still stirs",
+                "锄头等级不足，凿不动{ore}，回主城升级锄头":
+                    "Pickaxe too weak for {ore} — head home and upgrade it",
+                "矿里冻着野怪，打倒它继续挖": "A beast is frozen in the ore — drop it to keep digging",
+                "{ore}的野怪更强，小心红圈": "Beasts in {ore} hit harder — watch the red rings",
+                "矿区出现一桶炸药，走过去点火清掉{ore}":
+                    "A powder keg appeared — walk over to light it and clear the {ore}",
+
+                // 宠物线
+                "先去野外找到龙蛋，抱回来孵化": "Find the dragon egg out in the field and carry it back",
+                "先孵化出宠物才能进化": "Hatch your pet before it can evolve",
+                "先扩建主城，才能解锁下一级锄头": "Expand the stronghold to unlock the next pickaxe",
+                "先升级锄头凿开下一层矿，再扩建主城": "Upgrade the pickaxe to break the next layer, then expand",
+                "发现龙蛋，靠近拾取后带回孵化台": "Dragon egg found — pick it up and bring it to the hatchery",
+                "带龙蛋回主城孵化台": "Carry the egg back to the hatchery",
+                "先升级主城解锁孵化台": "Upgrade the stronghold to unlock the hatchery",
+                "安放龙蛋": "Placing the egg",
+                "宠物幼龙孵化成功，它会自动帮你战斗": "Your hatchling is born — it fights alongside you",
+                "宠物进化完成": "Pet evolution complete",
+
+                // 封印与战斗飘字
+                "巨龙已进化，把金币砸进封印": "Your dragon has evolved — pour gold into the seal",
+                "封印松动了，凿开它": "The seal is cracking — break it open",
+                "狂暴": "FRENZY",
+                "完美闪避": "PERFECT DODGE"
+            };
+
+            // 查不到就原样返回。这条兜底是有意的：漏翻的一句会显示中文，
+            // 比显示一个空字符串或者 id 更容易在实机上被发现。
+            function t(text, params) {
+                let out = LANG === "en" && EN[text] !== undefined ? EN[text] : text;
+                if (params) for (const key in params) out = out.split(`{${key}}`).join(params[key]);
+                return out;
+            }
+
             const CONFIG = {
                 playerSpeed: 9.4,
                 playerAcceleration: 11,
@@ -844,7 +961,7 @@
             const ORE_TIERS = {
                 low: {
                     id: "low",
-                    name: "低级矿",
+                    name: t("低级矿"),
                     ringRadius: 18.5,
                     ringThickness: 4.4,
                     ringHeight: 3.4,
@@ -900,7 +1017,7 @@
                 },
                 mid: {
                     id: "mid",
-                    name: "中级矿",
+                    name: t("中级矿"),
                     ringRadius: 27.5,
                     ringThickness: 5.2,
                     ringHeight: 4.3,
@@ -967,7 +1084,7 @@
                 },
                 high: {
                     id: "high",
-                    name: "高级矿",
+                    name: t("高级矿"),
                     // 从 39/6（36~42）内移到 37.5/5.4（34.8~40.2），给外面的封印矿腾地方。
                     // 让位的量是被终局构图定死的：对峙时玩家站在破封点内侧四米、侧向七米处，
                     // 那个落点的半径是 41.8，必须落在高级矿外缘和封印矿内缘之间的空走廊里，
@@ -1066,7 +1183,7 @@
                 // 抬到 5 只是把同一条闭死规则重新拉开一格；改锄头上限时必须一起抬。
                 [SEALED_TIER]: {
                     id: SEALED_TIER,
-                    name: "封印矿",
+                    name: t("封印矿"),
                     // 43.4~47.0。外缘离场地边缘那圈岩石还有一米，内缘离高级矿外缘 3.2 米——
                     // 那条走廊必须能站人：玩家得走到墙根底下才凿得到它，也才会知道自己凿不动。
                     ringRadius: 45.2,
@@ -1433,11 +1550,11 @@
             // halo 是加色光晕专用的深色版本。加色是往画面上「加」，直接用本体那个亮色会把
             // 三个通道一起顶到 1.0，结果就是第一版那样——全白。压深之后加上去才保得住色相。
             const SHARD_GRADES = {
-                low: { id: "low", name: "初级宝石", color: 0xdcefff, emissive: 0x6f9fd8, halo: 0x2f6fc8, css: "#dcefff", scale: 1 },
+                low: { id: "low", name: t("初级宝石"), color: 0xdcefff, emissive: 0x6f9fd8, halo: 0x2f6fc8, css: "#dcefff", scale: 1 },
                 // 中级这档偏绿而不是偏黄：黄绿在紫矿上和同时埋着的金币是同一个暖色区，
                 // 远看两种掉落物混成一片，而它们进的是完全不同的账。
-                mid: { id: "mid", name: "中级宝石", color: 0x7cff46, emissive: 0x2f9e0c, halo: 0x2f8c00, css: "#7cff46", scale: 1.18 },
-                high: { id: "high", name: "高级宝石", color: 0xff4ab8, emissive: 0xb00060, halo: 0xa8005c, css: "#ff4ab8", scale: 1.4 }
+                mid: { id: "mid", name: t("中级宝石"), color: 0x7cff46, emissive: 0x2f9e0c, halo: 0x2f8c00, css: "#7cff46", scale: 1.18 },
+                high: { id: "high", name: t("高级宝石"), color: 0xff4ab8, emissive: 0xb00060, halo: 0xa8005c, css: "#ff4ab8", scale: 1.4 }
             };
 
             // 经济数值表。这里原先并排放着两版（纯金币 / 金币+宝石+钻石）用来对比手感，
@@ -1991,10 +2108,13 @@
             // 搬到北边之后他的活动范围收成「广场 + 扇形走廊」，来回都是直线。
             // evolve 曾被迫放在 z=9.8，因为 (0,-5.4) 会被立在城心的主堡完全挡住；
             // 主堡退到 (0,4.5) 之后这个限制没了。
+            // 锄头贴的槽位。四级都在这一处，两个 key 共用同一份坐标——理由见
+            // TILE_SLOTS["pickaxe-last"]。共用而不是各写一份字面量，是因为它们必须一起动。
+            const PICKAXE_SLOT = { x: 5.4, z: -3.4 };
             const TILE_SLOTS = {
                 "city-build": { x: 0, z: -4.6 },
                 "city-upgrade": { x: 0, z: -4.6 },
-                pickaxe: { x: 5.4, z: -3.4 },
+                pickaxe: PICKAXE_SLOT,
                 // 孵化台和锻造台在 2026-09-07 对调了槽位。锻造台改成主城 Lv2 就亮，
                 // 而 Lv2 的城半径只有 9.8——地贴半边 1.7，槽位半径必须 ≤ 8.1，
                 // 原来那个 (-4.2,-7.8)（半径 8.86）会让它探出城墙，实机上看着像丢在野地里。
@@ -2041,18 +2161,19 @@
                     z: Math.sin(SECTOR.center - 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS
                 },
                 // 锄头地贴的第二个槽位，只在最后一级（Lv4）用，见 tileSlot()。
+                // 现在它就是城里那一处，也就是说这张贴整局不挪窝。
                 //
-                // 前三级绝不能挪出城：Lv2、Lv3 是凿开中级矿和高级矿的钱，而这条走廊在
-                // 那两道墙之后——开局就把贴摆在外面，玩家买不到 Lv2、也就凿不开中级矿，
-                // 整局当场死锁。只有 Lv4 不解锁任何矿层（高级矿 requiredPickaxe 是 3，
-                // 封印矿是 5，永远够不着），它才可以跟着终局搬到墙根。
+                // 中间有一版把 Lv4 摆到封印走廊上（献祭点东侧 4.4 米，和进化台一东一西），
+                // 为的是省掉「凿穿高级矿 → 走回城里买 Lv4 → 再走回墙根」那趟回头路。
+                // 实机上不成立：前三级都在城东这张贴上买，最后一级忽然出现在四十米外的
+                // 矿脉尽头，玩家得重新找一遍——省下的路程还不够抵这一下的困惑。
                 //
-                // 摆在献祭点东侧，进化台在西侧——接着城里那条「锄头（吃宝石）在东、
-                // 吃钻石的在西」的站位规律，三张贴在走廊里仍然按同一套读。
-                "pickaxe-last": {
-                    x: Math.cos(SECTOR.center + 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS,
-                    z: Math.sin(SECTOR.center + 4.4 / SEAL_OFFER_RADIUS) * SEAL_OFFER_RADIUS
-                }
+                // 那趟回头路现在也不强制了：Lv4 不再是破封的前置（见 maybeShowSealOffering），
+                // 高级矿 Lv3 就凿得穿。想要提速和那一次横扫就回城买，不想要可以直接破封。
+                //
+                // 留着这个 key 而不是删掉：tileSlot() 那条「最后一级换槽位」的接缝还在，
+                // 要再挪出去只改这里的坐标就行。
+                "pickaxe-last": PICKAXE_SLOT
             };
 
             // 玩家能走到的地方是个 T 形，一切带碰撞的东西都得躲开它（见 CITY_CLEAR）。
@@ -3014,6 +3135,40 @@
                 ui.tunerReload = document.getElementById("tuner-reload");
                 ui.tunerOut = document.getElementById("tuner-out");
                 ui.tunerToggle = document.getElementById("tuner-toggle");
+                localizeMarkup();
+            }
+
+            // HTML 里写死的那几句文案。中文版走这儿等于原地重写一遍同样的字，
+            // 所以 zh 直接返回——省掉一次无意义的 DOM 写入，也避免把 markup 里的
+            // 中文和 EN 表里的 key 写歪了却没人发现。
+            //
+            // 调参面板的按钮不在这份名单里：它是开发工具，不跟着玩家语言走。
+            function localizeMarkup() {
+                if (LANG !== "en") return;
+                document.documentElement.lang = "en";
+                document.title = t(document.title);
+                const byId = {
+                    "city-hud": "主城 Lv.1",
+                    "tutorial-copy": "拖动移动，走进光圈建设主城",
+                    "cinematic-sub": "火焰巨龙 破封",
+                    restart: "重新开始",
+                    "end-title": "火焰巨龙破封而出",
+                    "end-copy": "你的巨龙已经进化完成。下载游戏，带上它讨伐封印在矿脉深处的火焰巨龙。",
+                    download: "立即下载，讨伐巨龙",
+                    replay: "再玩一次"
+                };
+                for (const id in byId) {
+                    const node = document.getElementById(id);
+                    if (node) node.textContent = t(byId[id]);
+                }
+                // 蛋提示是两行（粗体标题 + 说明），得分别写
+                const tip = document.getElementById("egg-tip");
+                if (tip) {
+                    const title = tip.querySelector("b");
+                    const sub = tip.querySelector("span");
+                    if (title) title.textContent = t("龙蛋");
+                    if (sub) sub.textContent = t("走近搬回主城");
+                }
             }
 
             function seededRandom(seed) {
@@ -4830,9 +4985,9 @@
                 context.restore();
             }
 
-            // 地贴该摆哪个槽位。只有锄头有两个槽：最后一级在封印走廊，其余在城里
-            // （理由见 TILE_SLOTS["pickaxe-last"]）。创建和重新布防两条路都走这里，
-            // 免得「第一次摆在城里、升级后挪出去」的规则各写一份。
+            // 地贴该摆哪个槽位。只有锄头有两个槽，最后一级用另一个；两个槽眼下指的是
+            // 城里同一处，所以这张贴实际不动（理由见 TILE_SLOTS["pickaxe-last"]）。
+            // 创建和重新布防两条路都走这里，免得换槽位的规则各写一份。
             function tileSlot(id) {
                 if (id === "pickaxe" && ECON.pickaxeCost &&
                     pickaxeLevel >= ECON.pickaxeCost.length) return TILE_SLOTS["pickaxe-last"];
@@ -5067,7 +5222,7 @@
                     toast(unlockCopy(unlock));
                     if (unlock === "hatchery") ensureEggAvailability();
                 } else {
-                    toast(`主城升级到 Lv.${cityLevel}`);
+                    toast(t("主城升级到 Lv.{n}", { n: cityLevel }));
                 }
                 const zone = zones.find(item => item.id === "city-upgrade");
                 if (zone) {
@@ -5305,7 +5460,9 @@
                 // 满级按预设能买到第几级判，不能写死 3：A 版封顶三级、宝石版四级，
                 // 写死的话宝石版买到 Lv3 就会报「已满级」，而地贴上明明还挂着下一档。
                 const maxed = pickaxeLevel > (ECON.pickaxeCost ? ECON.pickaxeCost.length : 0);
-                toast(maxed ? `锄头已满级，${tier.name}也能快速开采` : `锄头升级，现在能凿开${tier.name}了`);
+                toast(maxed
+                    ? t("锄头已满级，{ore}也能快速开采", { ore: tier.name })
+                    : t("锄头升级，现在能凿开{ore}了", { ore: tier.name }));
                 defer(1.5, spawnSweepCharge);
             }
 
@@ -5398,10 +5555,10 @@
                     toast("弓箭打造完成！现在可以远程射杀守卫了");
                     return;
                 }
-                const gained = weaponLevel === 3 ? "三连击最后一下会炸开，溅到旁边的怪"
-                    : "威力再上一档";
+                const gained = weaponLevel === 3 ? t("三连击最后一下会炸开，溅到旁边的怪")
+                    : t("威力再上一档");
                 const maxed = weaponLevel >= WEAPON_LEVELS.length;
-                toast(maxed ? `弓箭强化满级，${gained}` : `弓箭强化完成，${gained}`);
+                toast(maxed ? t("弓箭强化满级，{gained}", { gained }) : t("弓箭强化完成，{gained}", { gained }));
             }
 
             // 弓的分级外观。原先这儿是「给手上那把镐套一层附魔壳」，代价当初就明写下来
@@ -5522,10 +5679,10 @@
                 buildPopEffect(getOreImpactPoint(node), 34, 0xff8a3c);
                 cameraShake = Math.max(cameraShake, 0.9);
                 playSound("crack");
-                // 收掉所有还亮着的地贴。以前不用管：残留的贴全在城里，离破封点四十米，
-                // 天然落在画面外。现在锄头 Lv4 和进化台都摆在这条走廊上（见 TILE_SLOTS），
-                // 锄头那张离破封点只有 4.4 米——玩家一路没踩它就破了封的话，
-                // 一张 0/3 的地贴会横在巨龙挣出来那一拍的画面里。
+                // 收掉所有还亮着的地贴。锄头 Lv4 已经搬回城里了（见 TILE_SLOTS），
+                // 剩下的贴又全在城里、离破封点四十米，这一步眼下收不到什么；留着是因为
+                // 进化台仍然摆在这条走廊上，离破封点只有 4.4 米——万一它还亮着，
+                // 一张地贴会横在巨龙挣出来那一拍的画面里。
                 for (const zone of zones) zone.group.visible = false;
                 defer(0.5, startFlameDragonIntro);
             }
@@ -5641,8 +5798,8 @@
             // 钻石单轨之后它卡着下一级城和进化，`getGuideGoal` 的钻石缺口分支已经带上了它，
             // 箭头是真会指过去的——特例撤掉，否则这句话反过来在少说一句真话。
             function gemShortCopy(short) {
-                if (!nearestLivingGuard()) return `还差 ${short} 颗钻石，凿开矿墙叫醒里面的守卫`;
-                return `还差 ${short} 颗钻石，打倒守卫就能拿到，箭头指着它`;
+                if (!nearestLivingGuard()) return t("还差 {n} 颗钻石，凿开矿墙叫醒里面的守卫", { n: short });
+                return t("还差 {n} 颗钻石，打倒守卫就能拿到，箭头指着它", { n: short });
             }
 
             // 宝石不够时说的那句话。要说清两件事：缺的是哪一档，以及那一档从哪儿来。
@@ -5652,12 +5809,12 @@
             // 那一层还有货就报层名（箭头同时指过去）；已经榨干了就得直说，
             // 否则玩家会回头去挖一堵早就没宝石的墙。
             function shardShortCopy(short, grade) {
-                const name = SHARD_GRADES[grade] ? SHARD_GRADES[grade].name : "宝石";
+                const name = SHARD_GRADES[grade] ? SHARD_GRADES[grade].name : t("宝石");
                 const tier = ORE_TIERS[grade];
-                if (!tier) return `还差 ${short} 颗${name}`;
+                if (!tier) return t("还差 {n} 颗{name}", { n: short, name });
                 return nearestShardNode(grade)
-                    ? `还差 ${short} 颗${name}，${tier.name}里还埋着，箭头指着它`
-                    : `${tier.name}已经挖空了，${name}不够就升不了这把锄头`;
+                    ? t("还差 {n} 颗{name}，{ore}里还埋着，箭头指着它", { n: short, name, ore: tier.name })
+                    : t("{ore}已经挖空了，{name}不够就升不了这把锄头", { name, ore: tier.name });
             }
 
             function zoneBlockedCopy(id) {
@@ -6282,9 +6439,10 @@
                 blockedMineHint = 3.2;
                 // 三种凿不动的处置完全不同——回城升级、就地打一架、根本挖不开——话必须分开说，
                 // 否则玩家会跑回城里对着一把买不起或压根不存在的锄头发呆。
-                if (guardBlocking(node)) toast(`先干掉守卫，才能继续凿这段${node.tier.name}`);
-                else if (node.tier.sealed) toast(`${node.tier.name}凿不开，里面封着的东西还在动`);
-                else toast(`锄头等级不足，凿不动${node.tier.name}，回主城升级锄头`);
+                const ore = node.tier.name;
+                if (guardBlocking(node)) toast(t("先干掉守卫，才能继续凿这段{ore}", { ore }));
+                else if (node.tier.sealed) toast(t("{ore}凿不开，里面封着的东西还在动", { ore }));
+                else toast(t("锄头等级不足，凿不动{ore}，回主城升级锄头", { ore }));
             }
 
             function mineOre(node) {
@@ -6511,10 +6669,10 @@
                 // 封印矿不能沿用「收益更高」这句：它一枚金币都不给，也凿不开。
                 // 这条提示要立的是疑问，不是下一个目标——玩家接下来会去砸它，砸不动才有戏。
                 if (tier.sealed) {
-                    toast(`走廊尽头是${tier.name}，凿不开，里面封着东西`);
+                    toast(t("走廊尽头是{ore}，凿不开，里面封着东西", { ore: tier.name }));
                     return;
                 }
-                toast(`发现${tier.name}，收益更高但野怪更强`);
+                toast(t("发现{ore}，收益更高但野怪更强", { ore: tier.name }));
             }
 
             function signedAngleDelta(angle, reference) {
@@ -7233,7 +7391,7 @@
                 if (!shared[`monsterSeen_${node.tierId}`]) {
                     shared[`monsterSeen_${node.tierId}`] = true;
                     if (node.tierId === "low") toast("矿里冻着野怪，打倒它继续挖");
-                    else toast(`${node.tier.name}的野怪更强，小心红圈`);
+                    else toast(t("{ore}的野怪更强，小心红圈", { ore: node.tier.name }));
                 }
             }
 
@@ -10075,7 +10233,8 @@
                 if (point.z > 1) return;
                 const element = document.createElement("div");
                 element.className = `damage${big ? " big" : ""}${variant ? ` ${variant}` : ""}`;
-                element.textContent = text;
+                // 绝大多数飘字是伤害数字，查表查不到、原样通过；只有「狂暴」「完美闪避」会命中。
+                element.textContent = t(text);
                 element.style.left = `${(point.x * 0.5 + 0.5) * innerWidth}px`;
                 element.style.top = `${(-point.y * 0.5 + 0.5) * innerHeight}px`;
                 ui.damage.appendChild(element);
@@ -10085,7 +10244,10 @@
 
             function toast(text) {
                 if (!text) return;
-                ui.toast.textContent = text;
+                // 在出口统一查表，绝大多数 call site 因此一个字都不用改。
+                // 带插值的那些句子已经在 call site 用 t(key, params) 拼好了，
+                // 到这儿查不到、原样通过——重复查一次是无害的。
+                ui.toast.textContent = t(text);
                 ui.toast.classList.add("show");
                 clearTimeout(toastTimer);
                 toastTimer = setTimeout(() => ui.toast.classList.remove("show"), 2400);
@@ -10099,7 +10261,7 @@
                 ui.hpFill.style.width = `${(playerHp / CONFIG.playerMaxHp) * 100}%`;
                 ui.hpFill.style.background = playerHp > 55 ? "#58e486" : playerHp > 30 ? "#ffcc4d" : "#ff5c5c";
                 if (cityLevel > 0) {
-                    ui.cityHud.textContent = `主城 Lv.${cityLevel}　锄头 Lv.${pickaxeLevel}`;
+                    ui.cityHud.textContent = t("主城 Lv.{city}　锄头 Lv.{pickaxe}", { city: cityLevel, pickaxe: pickaxeLevel });
                     ui.cityHud.classList.add("show");
                 }
             }
@@ -10127,7 +10289,7 @@
 
             function setTutorial(visible, copy) {
                 tutorialVisible = visible;
-                if (copy) ui.tutorialCopy.textContent = copy;
+                if (copy) ui.tutorialCopy.textContent = t(copy);
                 ui.tutorial.style.display = visible ? "flex" : "none";
                 requestAnimationFrame(() => {
                     ui.tutorial.style.opacity = visible ? "1" : "0";
@@ -10293,7 +10455,8 @@
                 if (seal) return guideThroughGate(seal.position.clone());
 
                 // 交替顺序由 isZonePayable 保证，这里只需要按「先锄头后扩城」挑当前那一步。
-                // 最后一级的锄头贴在封印走廊里（见 tileSlot），所以也要走 guideThroughGate。
+                // 仍然走 guideThroughGate：锄头贴留着「最后一级换槽位」的接缝（见 tileSlot），
+                // 换出去就可能落在城外。目标在自由圆里时它直接原样返回，城内这条不受影响。
                 const pickaxe = zones.find(zone => zone.id === "pickaxe" && !zone.complete);
                 if (ready(pickaxe)) return guideThroughGate(pickaxe.position.clone());
 
@@ -10969,7 +11132,7 @@
                     Math.sin(SECTOR.center) * radius
                 ));
                 sweepCharge = createSweepCharge(spot, tierIds);
-                toast(`矿区出现一桶炸药，走过去点火清掉${ORE_TIERS[tierIds[0]].name}`);
+                toast(t("矿区出现一桶炸药，走过去点火清掉{ore}", { ore: ORE_TIERS[tierIds[0]].name }));
                 playSound("warn");
             }
 
