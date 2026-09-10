@@ -3,6 +3,7 @@
   "private": true,
   "description": "New Wreck It King local static server + tuning save endpoint",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "node build-versions.mjs"
   }
 }

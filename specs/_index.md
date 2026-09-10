@@ -27,6 +27,7 @@
 | progression-ladder-rework | 推进阶梯重排：武器台进城、城与武器/锄头严格交替、钻石单轨、龙蛋定点 | done（低级矿消耗率一条未达标，见该文第 8.1 节） | [tasks/progression-ladder-rework.spec.md](./tasks/progression-ladder-rework.spec.md) |
 | power-spike-tuning | 战力台阶调参：镐头改近战、守卫血量重排、小龙补强 | done | [tasks/power-spike-tuning.spec.md](./tasks/power-spike-tuning.spec.md) |
 | english-locale | 英文版：只换文案（`?lang=en`），玩法与数值逐位不动 | done | [tasks/english-locale.spec.md](./tasks/english-locale.spec.md) |
+| playtest-r3-followup | 第三期玩测反馈落地计划（13 条改动 + 开场巨龙 / 压低镜头 A/B 双版本，必要时 C 版） | planning | [tasks/playtest-r3-followup.spec.md](./tasks/playtest-r3-followup.spec.md) |
 
 ## 调参入口
 

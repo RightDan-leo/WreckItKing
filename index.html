@@ -2,11 +2,79 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=WreckItKing.html">
-    <title>New Wreck It King</title>
-    <script>location.replace("WreckItKing.html");</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>New Wreck It King — 版本入口</title>
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px;
+            background: radial-gradient(circle at 50% 0%, #1d2740 0%, #0b0e16 60%);
+            color: #e8eefc;
+            font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        }
+        main { width: 100%; max-width: 560px; }
+        h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 1px; }
+        .sub { margin: 0 0 28px; color: #8c9bbd; font-size: 14px; line-height: 1.6; }
+        a.card {
+            display: block;
+            padding: 18px 20px;
+            margin-bottom: 12px;
+            border: 1px solid #2c3a5a;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #172033 0%, #121a2a 100%);
+            text-decoration: none;
+            color: inherit;
+            transition: border-color .18s, transform .18s;
+        }
+        a.card:hover { border-color: #5fe6ff; transform: translateY(-2px); }
+        .tag {
+            display: inline-block;
+            min-width: 26px;
+            padding: 2px 8px;
+            margin-right: 10px;
+            border-radius: 6px;
+            background: #5fe6ff;
+            color: #0b0e16;
+            font-weight: 700;
+            font-size: 13px;
+            text-align: center;
+        }
+        .name { font-size: 17px; font-weight: 600; vertical-align: middle; }
+        .desc { margin: 8px 0 0; color: #8c9bbd; font-size: 13px; line-height: 1.6; }
+        .foot { margin-top: 26px; color: #66738f; font-size: 12px; line-height: 1.9; }
+        .foot a { color: #8c9bbd; }
+    </style>
 </head>
 <body>
-    <p><a href="WreckItKing.html">打开 New Wreck It King</a></p>
+<main>
+    <h1>New Wreck It King</h1>
+    <p class="sub">第三期玩测反馈的三个对照版本。三版共同基线一致，差别只在下面写明的那一项。</p>
+
+    <a class="card" href="a/">
+        <span class="tag">A</span><span class="name">开场展示巨龙</span>
+        <p class="desc">开场用一段运镜把封印中的火焰巨龙推到眼前，矿体保持半透明——隔着墙就能看见里面的守卫。</p>
+    </a>
+
+    <a class="card" href="b/">
+        <span class="tag">B</span><span class="name">压低镜头制造惊喜</span>
+        <p class="desc">没有开场运镜，镜头压低、矿体做实。挖穿之前不知道里面有怪，第一次挖出守卫是个意外。</p>
+    </a>
+
+    <a class="card" href="c/">
+        <span class="tag">C</span><span class="name">A + 主城向矿区扩张</span>
+        <p class="desc">规则与 A 相同，另外让主城随着矿脉被清空一点点长出去。</p>
+    </a>
+
+    <p class="foot">
+        每版都支持 <code>?lang=en</code> 切英文，例如 <a href="a/?lang=en">a/?lang=en</a>。<br>
+        母版（读 <code>?v=</code> 参数，供本地对照）：<a href="WreckItKing.html">WreckItKing.html</a>
+    </p>
+</main>
 </body>
 </html>

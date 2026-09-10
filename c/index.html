@@ -688,8 +688,8 @@
             #cinematic-title { font-size: 30px; letter-spacing: 4px; }
         }
     </style>
-    <script src="vendor/three.min.js"></script>
-    <script src="vendor/nipplejs.min.js"></script>
+    <script src="../vendor/three.min.js"></script>
+    <script src="../vendor/nipplejs.min.js"></script>
 </head>
 <body>
     <div id="ui">
@@ -785,7 +785,7 @@
             // 换不到就整个构建失败）。写死而不是靠 URL 参数，是因为发出去的三条链接
             // 不能让人一眼看出还有别的版本、更不能互相切换——那样对照就废了。
             // 根目录这一份保持 null：本地开发和临时对照走 ?v=b 这种参数。
-            const BUILD_VERSION = null;
+            const BUILD_VERSION = "c";
             const VERSION = BUILD_VERSION || new URLSearchParams(location.search).get("v") || "a";
             const EN = {
                 // 界面与结算
