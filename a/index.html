@@ -9853,7 +9853,7 @@
                 cinematicShot(center, offset, framingDistance(30, 22), 4.5, true);
                 cinematicShot(center, offset, framingDistance(28, 20), 4.5);
                 ui.cineTitle.textContent = "FLAME DRAGON";
-                ui.cineSub.textContent = LANG === "en" ? "Break the seal. Defeat the dragon. Tap to skip" : "凿穿矿山，击败巨龙 · 点击跳过";
+                ui.cineSub.textContent = VERSION === "a" ? "凿穿矿山，击败巨龙" : "凿穿矿山，击败巨龙 · 点击跳过";
                 ui.cineTitle.classList.add("show");
                 ui.cineSub.classList.add("show");
                 camera.lookAt(cameraFocus);
@@ -11937,6 +11937,7 @@
             }
 
             function startGame() {
+                if (opening.active && VERSION === "a") { ensureAudio(); return; }
                 if (opening.active) finishOpeningReveal();
                 if (started) return;
                 started = true;
