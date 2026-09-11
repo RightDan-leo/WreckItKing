@@ -230,6 +230,18 @@
             transition: opacity 0.25s, transform 0.25s;
         }
         #toast.show { opacity: 1; transform: translate(-50%, 0); }
+        #tile-hint {
+            position: fixed; left: 50%; bottom: max(82px, 10vh);
+            transform: translateX(-50%); width: max-content; max-width: min(82vw, 380px);
+            box-sizing: border-box; padding: 10px 15px; border-radius: 12px;
+            background: rgba(17, 15, 30, 0.92); border: 1px solid #b29b62;
+            color: #ffe3a3; font-size: 14px; font-weight: 700; line-height: 1.5;
+            text-align: center; pointer-events: none;
+        }
+        #block-donate { position:fixed; right:16px; bottom:90px; max-width:270px; padding:12px 18px;
+            border:1px solid #ffe09a; border-radius:14px; background:#594026; color:#ffe9b2;
+            font:700 15px/1.5 sans-serif; white-space:pre-line; pointer-events:auto; cursor:pointer; }
+        #block-donate:disabled { opacity:.7; cursor:default; }
         #guide-arrow {
             position: fixed;
             left: 50%;
@@ -262,7 +274,7 @@
             text-shadow: 0 0 14px rgba(255, 176, 40, 0.9), 0 3px 6px rgba(0,0,0,0.9);
             animation: goldPop 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        /* 完美闪避不是伤害数字，是一句表扬。用玩家攻击弧光的青白色，和黄色的伤害、
+        /* 闪避不是伤害数字，是一句表扬。用玩家攻击弧光的青白色，和黄色的伤害、
            金色的结算分开；弹一下就走，不能压住紧接着的输出画面。 */
         .damage.perfect {
             font-size: 22px;
@@ -271,7 +283,7 @@
             text-shadow: 0 0 12px rgba(125, 220, 255, 0.9), 0 2px 5px rgba(0,0,0,0.9);
             animation: perfectPop 0.62s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        /* 换档提示。橙红配眼睛烧起来的颜色，和青白的「完美闪避」分处冷暖两端——
+        /* 换档提示。橙红配眼睛烧起来的颜色，和青白的「闪避」分处冷暖两端——
            这两条字会在同一场战斗里交替出现，一个是奖励一个是警告，不能看混。 */
         .damage.frenzy {
             font-size: 21px;
@@ -327,7 +339,7 @@
         /* 这两条原先挂在 body.econ-gem 下（纯金币版整条不存在），版本删掉之后改成常开。
            特意留在这个位置而不是并进上面的块：靠源码顺序压过前面的 display:none
            和 #city-hud 的默认 top，挪到前面去就全都不生效了。 */
-        #gem-hud { display: flex; }
+        #gem-hud.revealed { display: flex; }
         #city-hud { top: max(156px, calc(env(safe-area-inset-top) + 147px)); }
         /* 宝石。只显示当前锄头要收的那一档，颜色跟着品质走（内联样式，见 updateUI），
            所以这里不写死颜色；锄头满级后整条隐藏（.spent）。 */
@@ -349,7 +361,7 @@
             border: 1px solid rgba(120, 220, 180, 0.45);
             border-radius: 22px 8px 8px 22px;
         }
-        #shard-hud { display: flex; }
+        #shard-hud.revealed { display: flex; }
         #shard-hud.spent { display: none; }
         /* 满级后这条收起来，主城行跟着回到钻石行下面，免得中间空一格。 */
         #shard-hud.spent ~ #city-hud { top: max(112px, calc(env(safe-area-inset-top) + 98px)); }
@@ -366,7 +378,7 @@
             width: 21px;
             height: 21px;
             /* 转 45 度的方块。金币是圆的，两者的剪影得一眼分得开，不能只靠颜色 */
-            transform: rotate(45deg);
+            clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
             background: #5fe6ff;
             border: 3px solid #b6f4ff;
             border-radius: 5px;
@@ -640,6 +652,15 @@
             transition: opacity 0.45s;
         }
         #cinematic-sub.show { opacity: 1; }
+        #cinematic-sub, #toast, #tutorial-copy {
+            white-space: normal;
+            max-width: calc(100vw - 32px);
+            text-align: center;
+            line-height: 1.5;
+            box-sizing: border-box;
+        }
+        #cinematic-sub { width: 640px; }
+        #toast { width: max-content; }
         #end-screen {
             position: fixed;
             inset: 0;
@@ -716,6 +737,8 @@
             <div id="tutorial-copy">拖动移动，走进光圈建设主城</div>
         </div>
         <div id="toast"></div>
+        <div id="tile-hint" role="status" hidden></div>
+        <button id="block-donate" hidden></button>
         <div id="labels"></div>
         <div id="guide-arrow">▲</div>
         <div id="egg-lock">
@@ -787,6 +810,16 @@
             // 根目录这一份保持 null：本地开发和临时对照走 ?v=b 这种参数。
             const BUILD_VERSION = "a";
             const VERSION = BUILD_VERSION || new URLSearchParams(location.search).get("v") || "a";
+            // Three.js 创建网格的 UUID 也会消耗 Math.random；玩法单独取随机流，
+            // 避免 C 多建几栋装饰房屋就改掉怪物招式和金币落点。
+            const randomSeed = Math.floor(Math.random() * 2147483646) + 1;
+            const random = seededRandom(randomSeed);
+            const HIDE_GUARDS = VERSION === "b";
+            // A 在低级矿清空后扩城，B 保持固定主城，C 使用独立区块布局。
+            const CITY_GROW = VERSION === "a"; // A 清空低级矿后扩建前沿广场；C 仍用独立区块布局。
+            const C_BLOCKS = VERSION === "c";
+            const CITY_OFFSET_Z = C_BLOCKS ? 0 : -1.5; // A/B 整城前移，满级北沿 -16.1，低级矿内沿 -16.3。
+            const FOLLOW_CAMERA = C_BLOCKS ? { height: 19, back: 14 } : HIDE_GUARDS ? { height: 18, back: 21 } : { height: 26, back: 19.5 };
             const EN = {
                 // 界面与结算
                 "New Wreck It King - 火焰巨龙": "New Wreck It King - Flame Dragon",
@@ -818,10 +851,11 @@
 
                 // 引导
                 "拖动移动，走进光圈建设主城": "Drag to move — enter the ring to build your stronghold",
-                "拖动摇杆移动，走进光圈建设主城": "Drag to move — enter the ring to build your stronghold",
-                "走进光圈，用背上的金币建设主城": "Step into the ring and spend your gold to build the stronghold",
+                "拖动摇杆移动，走进光圈建设主城": "Drag to move. Enter the ring to build your stronghold.",
+                "走进光圈，建设你的主城": "Enter the ring to build your stronghold.",
 
                 // 主城
+                "矿区已改建为城区": "Cleared mines are now part of your town",
                 "主城建成，去矿区赚取金币": "Stronghold built — head to the mines for gold",
                 "主城升级到 Lv.{n}": "Stronghold upgraded to Lv.{n}",
                 "主城扩张，解锁升级锄头": "Stronghold expanded — pickaxe upgrades unlocked",
@@ -843,7 +877,7 @@
 
                 // 武器线
                 "弓箭打造完成！现在可以远程射杀守卫了": "Bow forged! Now you can shoot guards from range",
-                "三连击最后一下会炸开，溅到旁边的怪": "the third hit now bursts and splashes nearby foes",
+                "射速提升，第三箭爆炸，清理成群野怪": "the third hit now bursts and splashes nearby foes",
                 "威力再上一档": "power steps up another notch",
                 "弓箭强化满级，{gained}": "Bow fully enhanced — {gained}",
                 "弓箭强化完成，{gained}": "Bow enhanced — {gained}",
@@ -882,7 +916,7 @@
                 "巨龙已进化，把金币砸进封印": "Your dragon has evolved — pour gold into the seal",
                 "封印松动了，凿开它": "The seal is cracking — break it open",
                 "狂暴": "FRENZY",
-                "完美闪避": "PERFECT DODGE"
+                "闪避": "DODGE"
             };
 
             // 查不到就原样返回。这条兜底是有意的：漏翻的一句会显示中文，
@@ -900,7 +934,7 @@
                 playerRadius: 0.62,
                 // 弓的攻击距离。注意**真正生效的交战距离比这个数大 1.4 米**：
                 // `nearestTarget()` 用的是 `playerAttackRange() + 1.4`，那 1.4 是瞄准容差。
-                // 所以这里 4.8 读出来是 6.2（Lv1）~ 6.8（Lv2 起 +reach 0.6），
+                // 所以这里 4.8 读出来是 3.2（Lv1 reach -3）~ 6.8（Lv2 起 +reach 0.6），
                 // 正好落在改弓箭时定的中程 6 ~ 7 米。
                 //
                 // 没有再往上抬，两个原因都实测过：
@@ -928,7 +962,7 @@
                 coinFlyToBackDuration: 0.3,
                 coinFlyToZoneDuration: 0.38,
                 backCoinMaxVisible: 70,
-                maxCoinDrops: 110,
+                maxCoinDrops: 550,
                 backCoinStep: 0.075,
                 zoneTileSize: 3.4,
                 zonePulseSpeed: 3.4,
@@ -1357,7 +1391,7 @@
                 // 相当于把守卫那 102 的击杀收入加厚一半，实测钻石版从 142.5 秒掉到 102.8 秒——
                 // 这些怪是氛围，不该动经济。压到合计 20 之后它只剩「打死了有响」这一份作用，
                 // 不足以让玩家改主意专门去刷。
-                { id: "lane-low", inner: "low", outer: "mid", hp: 300, damage: 2, drop: 2, speed: 2.2, scale: 0.62 },
+                { id: "lane-low", inner: "low", outer: "mid", hp: 150, damage: 1, drop: 2, speed: 2.2, chase: 1.6, scale: 0.62 },
                 { id: "lane-mid", inner: "mid", outer: "high", hp: 900, damage: 4, drop: 3, speed: 2.5, scale: 0.72 },
                 { id: "lane-high", inner: "high", outer: SEALED_TIER, hp: 2200, damage: 7, drop: 5, speed: 2.8, scale: 0.85 }
             ];
@@ -1504,8 +1538,8 @@
                 // splash 是三连击第三下的溅射半径
                 // （0 = 不溅开），splashRatio 是溅到旁边那些怪身上的伤害比例。
                 //
-                // 最高档的附加在规划里写的是「完美闪避后的反击变成范围扇击」，落地时换成了
-                // 溅射加强：那条描述预设了一个「反击」动作，而这一版完美闪避给的是破绽
+                // 最高档的附加在规划里写的是「闪避后的反击变成范围扇击」，落地时换成了
+                // 溅射加强：那条描述预设了一个「反击」动作，而这一版闪避给的是破绽
                 // （怪物踉跄、玩家自己找输出窗口），没有反击这个动作可以改。溅射能一路加宽，
                 // 成长感是连续的，而且和上一档共用同一段代码。
                 //
@@ -1563,7 +1597,7 @@
             // halo 是加色光晕专用的深色版本。加色是往画面上「加」，直接用本体那个亮色会把
             // 三个通道一起顶到 1.0，结果就是第一版那样——全白。压深之后加上去才保得住色相。
             const SHARD_GRADES = {
-                low: { id: "low", name: t("初级宝石"), color: 0xdcefff, emissive: 0x6f9fd8, halo: 0x2f6fc8, css: "#dcefff", scale: 1 },
+                low: { id: "low", name: t("初级宝石"), color: 0xffe4f4, emissive: 0xa06f98, halo: 0x703960, css: "#ffe4f4", scale: 1 },
                 // 中级这档偏绿而不是偏黄：黄绿在紫矿上和同时埋着的金币是同一个暖色区，
                 // 远看两种掉落物混成一片，而它们进的是完全不同的账。
                 mid: { id: "mid", name: t("中级宝石"), color: 0x7cff46, emissive: 0x2f9e0c, halo: 0x2f8c00, css: "#7cff46", scale: 1.18 },
@@ -1631,8 +1665,8 @@
                     // 供给 2×3 + 2×4 + 3×4 = 26，花 8 + 14 = 22，余 4。
                     // 只打低中两档拿 14 颗，付完孵化台剩 6，够不着 14 的进化——
                     // 高级守卫因此是承重结构，而不是顺路。
-                    hatcheryCost: 8,
-                    evolveCost: 14,
+                    hatcheryCost: 0,
+                    evolveCost: 10,
                     hatcheryCurrency: "gem",
                     evolveCurrency: "gem",
                     // 高级档从 6 降到 4。原先按「高级只有两只守卫」算供给，实际是三只，
@@ -1695,7 +1729,7 @@
                 // 打得密才吃得满，顺带也更像「有个东西在替你打」——单发大只是偶尔闪一下。
                 pet: {
                     hatched: { damage: 520, fireInterval: 0.45, range: 10 },
-                    evolved: { damage: 1150, fireInterval: 0.3, range: 14, powerGain: 3200 }
+                    evolved: { chainRange: 7, chainTargets: 20, damage: 1150, fireInterval: 0.3, range: 14, powerGain: 3200 }
                 },
                 // 固定赏金，不按剩余格数结算。按格算的话低级矿值 94、中级矿值 187 金币，
                 // 而整局全部开销才 315——两次横扫白送 89% 的经济，Lv3 到手游戏就结束了。
@@ -1705,6 +1739,7 @@
                 // 金币抛射手感。ghostRatio 加的是只有视觉、不进账的金币，用来在不动经济数值的
                 // 前提下把爆炸的密度撑起来。
                 coinToss: {
+                    mine: { ghostRatio: 4, dwell: 0.12 },
                     sweep: { burst: 1.1, spread: 1.3, dwell: 0.02, stagger: 0.05, ghostRatio: 2.5 },
                     // 横扫收尾补的尾数不铺开也不错峰：它是在玩家脚下一次性补齐的，
                     // 错峰会让最后几枚拖在爆炸结束之后飞回来。
@@ -1763,18 +1798,18 @@
                 // 被击退是被动的，不剥夺控制权。
                 hitStun: 0.25,
 
-                // ── 完美闪避与破绽 ──
-                // 结算瞬间人在区外、而这个窗口之内还在区内 → 完美闪避。
-                // 只判「结算时在区外」不行：站得远的人什么都没做也天天完美闪避，奖励会变成噪音。
+                // ── 闪避与破绽 ──
+                // 结算瞬间人在区外、而这个窗口之内还在区内 → 闪避。
+                // 只判「结算时在区外」不行：站得远的人什么都没做也天天闪避，奖励会变成噪音。
                 // 要求玩家确实在危险区里待到最后一刻，「贴着红圈边缘走掉」这一下
                 // 才是整套改造想让人做出来的动作。
-                perfectWindow: 0.22,
-                // 破绽：完美闪避后攻击方的硬直秒数，期间受伤翻倍、不能起手下一招。
+                perfectWindow: 0.45,
+                // 破绽：闪避后攻击方的硬直秒数，期间受伤翻倍、不能起手下一招。
                 // 这是躲避的全部收益来源——躲开换来的是一段能安全输出的时间，
                 // 也就是把「躲避」从纯避害翻成了正收益。
                 stunDuration: 0.8,
                 stunDamage: 2,
-                // 完美闪避那一下的时间微顿。只在完美闪避时给，普通躲开不给：
+                // 闪避那一下的时间微顿。只在闪避时给，普通躲开不给：
                 // 它会打断挖矿的连续手感，而挖矿是这个游戏每秒都在做的事。
                 hitStop: 0.08,
                 hitStopScale: 0.25,
@@ -1951,11 +1986,11 @@
                 {
                     label: "ARPG 战斗深度",
                     open: true,
-                    note: "全部即时生效，边打边拖。整套改造可以用 ?arpg=0 一键关掉回到改造前。「完美闪避窗口」是这里最该先试的一根：它决定「多晚离开危险区才算完美」，给小了只有贴着边擦过去才算，看到红圈就跑的人拿不到奖励。",
+                    note: "全部即时生效，边打边拖。整套改造可以用 ?arpg=0 一键关掉回到改造前。「闪避窗口」是这里最该先试的一根：它决定「多晚离开危险区仍算有效闪避」，给小了只有贴着边擦过去才算，看到红圈就跑的人拿不到奖励。",
                     fields: [
-                        { path: "ARPG.perfectWindow", label: "完美闪避窗口 秒", min: 0.05, max: 1.2, step: 0.01 },
-                        { path: "ARPG.stunDuration", label: "破绽时长 秒", min: 0.2, max: 3, step: 0.05 },
-                        { path: "ARPG.stunDamage", label: "破绽伤害倍率", min: 1, max: 5, step: 0.1 },
+                        { path: "ARPG.perfectWindow", label: "闪避窗口 秒", min: 0.05, max: 1.2, step: 0.01 },
+                        { path: "ARPG.stunDuration", label: "踉跄时长 秒", min: 0.2, max: 3, step: 0.05 },
+                        { path: "ARPG.stunDamage", label: "踉跄伤害倍率", min: 1, max: 5, step: 0.1 },
                         { path: "ARPG.hitStun", label: "受击硬直 秒（只锁攻击）", min: 0, max: 1, step: 0.05 },
                         { path: "ARPG.hitStop", label: "闪避微顿 秒", min: 0, max: 0.4, step: 0.01 },
                         { path: "ARPG.frenzyThreshold", label: "狂暴血量线", min: 0, max: 0.8, step: 0.05 },
@@ -2189,6 +2224,12 @@
                 "pickaxe-last": PICKAXE_SLOT
             };
 
+            // 城内地贴是世界坐标；去重处理共用的锄头槽位，封印与进化仍留在矿区。
+            for (const slot of new Set([
+                TILE_SLOTS["city-build"], TILE_SLOTS["city-upgrade"],
+                PICKAXE_SLOT, TILE_SLOTS.hatchery, TILE_SLOTS.forge
+            ])) slot.z += CITY_OFFSET_Z;
+
             // 玩家能走到的地方是个 T 形，一切带碰撞的东西都得躲开它（见 CITY_CLEAR）。
             // 躲开之后剩下的地面反而可以随便堆：他既然没有理由走进城南和广场两侧，
             // 那边的碰撞圈连成一片也无所谓。所以房子从 12 栋加到 26 栋，密度翻了一倍多。
@@ -2293,6 +2334,10 @@
 
             let scene, camera, renderer, clock;
             let player, playerVisual, playerWeapon, playerBow, playerRing, playerCape;
+            let attackRangeRing;
+            const ruins = [];
+            const finalWave = { spawned: false, count: 0, killed: 0 };
+            const enemyMining = { cells: 0, coins: 0, shards: 0 };
             // "pick" | "bow"，见 setHeldItem。
             let heldItem = "pick";
             // 扩建贴在等哪张地贴完成。null = 不等，可以直接买下一级城。
@@ -2302,6 +2347,19 @@
             // 弓的开弓进度（1 → 0）。和镐的 playerWeapon.userData.swing 分开：
             // 一个是挥砸、一个是拉弦放箭，两条动画的曲线不一样。
             let bowDraw = 0;
+            let bowStowTimer = 0;
+            const firstUpgradeStrike = {pick:false,bow:false};
+            let equipmentShowTimer = 0;
+            const PICK_STYLES = [
+                {name:"基础铁镐",color:0xb6c2cf,glow:0x536778,cooldown:1},
+                {name:"翠晶强化镐",color:0x7fe85e,glow:0x45bb36,cooldown:.72},
+                {name:"紫晶重型镐",color:0xc581ff,glow:0x8b3dde,cooldown:.66},
+                {name:"熔金能量镐",color:0xffcf66,glow:0xff7a1a,cooldown:.6}
+            ];
+            function equipmentCooldown(mining) {
+                return mining ? CONFIG.mineCooldown * PICK_STYLES[pickaxeLevel-1].cooldown
+                    : CONFIG.attackCooldown * (bowUnlocked() ? (weaponLevel>=3 ? .8 : .94) : 1);
+            }
             // 弓的静止位置（玩家局部坐标）。放箭的后坐是绕着这个点抖的（见 updateBowPose），
             // 两处必须读同一份：原先构造里写 z=0.3、updateBowPose 每帧又写回 0.24，
             // 于是构造里那个数从第一帧起就没生效过，弓实际待在 z≈0.12~0.24。
@@ -2399,6 +2457,16 @@
             const moveVelocity = new THREE.Vector3();
             const cameraFocus = new THREE.Vector3();
             const cinematic = { active: false, timer: 0, duration: 0, steps: [], index: 0 };
+            const opening = { active: false, finished: false };
+            const cityExtensions = [];
+            const frontierCity = { active: false, at: null };
+            const FRONTIER_SLOTS = {
+                "city-upgrade": { x: 0, z: -18.5 },
+                pickaxe: { x: 5, z: -18.5 },
+                forge: { x: -5, z: -18.5 },
+                hatchery: { x: -5, z: -14 },
+                evolve: { x: 5, z: -14 }
+            };
 
             let joystick = null;
             let audioCtx = null;
@@ -2407,7 +2475,7 @@
             // 记下调用次数，至少能把「没接线」和「接了但没出声」分开。
             const soundLog = {};
             let cameraShake = 0;
-            // 完美闪避那一下的时间微顿剩余量。用真实时间递减、缩放的是喂给 update 的 dt，
+            // 闪避那一下的时间微顿剩余量。用真实时间递减、缩放的是喂给 update 的 dt，
             // 所以微顿本身不会被自己拖长。sim() 手动步进时不经过 animate，因此测试里不生效。
             let hitStop = 0;
             let perfectDodges = 0;
@@ -2453,7 +2521,9 @@
                 // 必须在建场之前：环半径、格数、守卫血量都会在下面几行里烘进几何和对象，
                 // 之后再改就只能等下一次重载。
                 setupTuning();
+                if (C_BLOCKS) setupBlockLayout();
                 createSharedAssets();
+                if (C_BLOCKS) createBlockCoinBatches();
                 createLights();
                 createArena();
                 createPlayer();
@@ -2473,13 +2543,48 @@
                 updateUI();
                 showTile("city-build");
                 spawnFixedEgg();
-                animate();
+                if (!HIDE_GUARDS && !C_BLOCKS) startOpeningReveal();
+                else {
+                    cameraFocus.copy(player.position).add(new THREE.Vector3(0, 0.85, -2.6));
+                    camera.position.copy(cameraFocus).add(new THREE.Vector3(0, FOLLOW_CAMERA.height, FOLLOW_CAMERA.back).multiplyScalar(C_BLOCKS ? Math.max(1, 0.78 / camera.aspect) : 1));
+                    camera.lookAt(cameraFocus);
+                }
+                requestAnimationFrame(animate);
 
                 window.__wik = {
                     hold: false,
                     // 三条投放链接长得一模一样，出问题时第一件要确认的事就是「这一版到底是哪版」。
                     // baked 区分「部署脚本写死的」和「?v= 临时指定的」——线上应当永远是 true。
                     version: () => ({ version: VERSION, baked: BUILD_VERSION !== null, lang: LANG }),
+                    blockProbe: (x, z) => { const p=new THREE.Vector3(x,0,z); const q=resolveCirclePosition(p,p,CONFIG.playerRadius); return {x:q.x,z:q.z}; },
+                    blockRoute: mode => { if(C_BLOCKS) blockState.route = mode; },
+                    blockGray: () => { if(C_BLOCKS) { shared.cityFloorMat.color.setHex(0x777777); shared.cityTrimMat.color.setHex(0x777777); shared.blockRoadMat.color.setHex(0x777777); } },
+                    variants: () => ({
+                        opening: { ...opening }, cinematic: cinematic.active,
+                        camera: { ...FOLLOW_CAMERA }, citygrow: CITY_GROW,
+                        frontier: { ...frontierCity, lowRemaining: ringRemaining("low") },
+                        blocks: C_BLOCKS ? blockAudit() : null,
+                        oreOpacity: shared.oreMaterials.low.opacity,
+                        buriedResourcesXray: !shared.oreCoinMat.depthTest,
+                        guards: oreNodes.filter(n => n.monster && !n.monsterRevealed).map(n => ({
+                            id: n.id, visible: n.monster.visible, depthTest: n.monster.userData.silhouetteMaterial.depthTest
+                        })),
+                        extensions: cityExtensions.map(e => ({ id: e.node.id, tier: e.node.tierId, at: e.at,
+                            cleared: e.node.cleared, buildings: e.buildings.map(b => ({ x: b.position.x, z: b.position.z })) })),
+                        dragons: scene.children.filter(o => o.userData.type === "dragon").length
+                    }),
+                    audit: () => ({
+                        randomSeed, wave: { ...finalWave }, enemyMining: { ...enemyMining },
+                        ruins: { total: ruins.length, cleared: ruins.filter(r => r.cleared).length },
+                        range: { radius: attackRangeRing.scale.x, visible: attackRangeRing.visible },
+                        hud: { gem: ui.gemHud.classList.contains("revealed"), shard: ui.shardHud.classList.contains("revealed") },
+                        enemies: enemies.filter(e => e.userData.alive).map(e => ({
+                            type: e.userData.type, wave: Boolean(e.userData.wave), emerging: e.userData.emerging,
+                            birthExempt: Boolean(e.userData.birthColumn),
+                            x: e.position.x, z: e.position.z,
+                            penetration: resolveOreWallPosition(e.position.clone(), ROVER_BODY_RADIUS, e.userData.birthColumn).distanceTo(e.position)
+                        }))
+                    }),
                     freezeAt: ms => setTimeout(() => { window.__wik.hold = true; }, ms),
                     tp: (x, z) => { player.position.set(x, 0, z); moveVelocity.set(0, 0, 0); },
                     // give(10) 金币 / give(5, "gem") 钻石 / give(4, "shard") 当前需要的那档宝石
@@ -2503,6 +2608,13 @@
                             .forEach(n => { for (let i = 0; i < 500 && !n.cleared; i++) mineOre(n); });
                         pickaxeLevel = saved;
                     },
+                    // 用真实结算路径验证三类怪物攻击拆矿，保留封印与未开放区块限制。
+                    enemyBlast: (x, z, radius = 3, kind = "circle", facing = 0) => {
+                        const position = new THREE.Vector3(x, 0, z);
+                        damageOreFromHazard({ kind, radius, facing, angle: Math.PI / 2, length: radius, width: 3,
+                            origin: position, source: { position }, mesh: { position } });
+                        return { ...enemyMining, chunks: effects.filter(e => e.type === "chunk").length, drops: coinDrops.length };
+                    },
                     killAll: () => [...enemies].forEach(e => killEnemy(e)),
                     finale: () => {
                         if (!pet) createPet();
@@ -2520,6 +2632,7 @@
                         complete: zone.complete,
                         requiresReentry: zone.requiresReentry,
                         hintShown: zone.hintShown,
+                        status: zoneStatus(zone),
                         x: +zone.position.x.toFixed(2),
                         z: +zone.position.z.toFixed(2)
                     })),
@@ -2550,7 +2663,7 @@
                         const distance = Math.hypot(p.x, p.z);
                         const angle = Math.atan2(p.z, p.x);
                         return oreRings.map(ring => {
-                            const ai = Math.floor((angle - SECTOR.start) / ring.cellAngle);
+                            const ai = Math.floor((angle - ring.angleStart) / ring.cellAngle);
                             const ri = Math.floor((distance - ring.innerRadius) / ring.cellDepth);
                             const column = columnAt(ring, ai, ri);
                             return {
@@ -2597,17 +2710,29 @@
                         return autoRun;
                     },
                     sweep: (on = true) => { sweepEnabled = on; return sweepEnabled; },
-                    charge: () => sweepCharge && {
-                        x: +sweepCharge.home.x.toFixed(1),
-                        z: +sweepCharge.home.z.toFixed(1),
-                        lit: sweepCharge.lit,
-                        tiers: sweepCharge.tierIds.join("+")
+                    ultimate: () => ultimateCharge && ({locked: ultimateCharge.locked, lockVisible: ultimateCharge.lock.visible, lit: ultimateCharge.lit, x: ultimateCharge.home.x, z: ultimateCharge.home.z}),
+                    waveEnemies: () => enemies.filter(e => e.userData.wave && e.userData.alive).map(e => ({x:e.position.x,z:e.position.z,engaged:e.userData.engaged})),
+                    equipment: (opts = {}) => {
+                        if(opts.pick){pickaxeLevel=opts.pick;applyPickaxeAppearance();setHeldItem("pick");}
+                        if(opts.weapon){weaponLevel=opts.weapon;applyWeaponAppearance();setHeldItem("bow");}
+                        if(opts.show)showEquipmentUpgrade(opts.weapon ? "bow" : "pick",opts.weapon || opts.pick || pickaxeLevel);
+                        return {pick:pickaxeLevel,weapon:weaponLevel,mineInterval:equipmentCooldown(true),attackInterval:equipmentCooldown(false),power:PICKAXE_LEVELS[pickaxeLevel-1].power,damage:playerHitDamage(),pickParts:playerWeapon.userData.trim.children.length,bowParts:playerBow.userData.armor.children.length};
+                    },
+                    equipmentMineSample: () => {
+                        const node=getNearestOre("low"),before=node.remaining;mineOre(node);
+                        return {cells:before-node.remaining,seconds:equipmentCooldown(true)};
+                    },
+                    lightning: () => ({maxHits:pet?.userData.maxSplashHits || 0, bolts:effects.filter(e=>e.type==="chainBolt").length}),
+                    petSplash: () => pet?.userData.maxSplashHits || 0,
+                    charge: () => {
+                        const charge = sweepCharge || (ultimateCharge && !ultimateCharge.locked ? ultimateCharge : null);
+                        return charge && {x: +charge.home.x.toFixed(1), z: +charge.home.z.toFixed(1), lit: charge.lit, ultimate: Boolean(charge.ultimate), tiers: charge.tierIds.join("+")};
                     },
                     // 手动步进模拟：标签页失焦时 rAF 会被节流，实测节奏必须脱离墙钟。
                     // 先接管 rAF（hold），否则渲染循环会和步进叠加成双倍速。
                     sim: (seconds, dt = 1 / 60) => {
+                        if (!window.__wik.hold) simElapsed = Math.max(simElapsed, clock.elapsedTime);
                         window.__wik.hold = true;
-                        simElapsed = Math.max(simElapsed, clock.elapsedTime);
                         const steps = Math.round(seconds / dt);
                         for (let i = 0; i < steps; i++) {
                             simElapsed += dt;
@@ -2652,7 +2777,10 @@
                     // 自动走位一停就无从判断是「没目标」还是「走不过去」，把这两件事分开看。
                     guide: () => {
                         const target = getGuideTarget();
+                        const goal = getGuideGoal();
                         return {
+                            goal: goal ? goal.toArray() : null,
+                            eggReachable: Boolean(eggPickup && canGuideToPosition(eggPickup.mesh.position)),
                             target: target ? target.toArray().map(v => Number(v.toFixed(2))) : null,
                             gap: target ? Number(flatDistance(target, player.position).toFixed(2)) : null,
                             stick: [Number(stick.x.toFixed(2)), Number(stick.z.toFixed(2)), stick.magnitude],
@@ -2774,7 +2902,7 @@
                             node.angleCenter
                         );
                         const target = node.angleCenter + THREE.MathUtils.clamp(delta, -half, half);
-                        const ai = Math.floor((target - SECTOR.start) / ring.cellAngle);
+                        const ai = Math.floor((target - ring.angleStart) / ring.cellAngle);
                         for (let d = -1; d <= 1; d++) {
                             for (let ri = 0; ri < ring.radialCells; ri++) {
                                 const column = columnAt(ring, ai + d, ri);
@@ -2956,6 +3084,8 @@
                             .applyQuaternion(playerBow.getWorldQuaternion(new THREE.Quaternion()));
                         return {
                             held: heldItem,
+                            pose: !bowUnlocked() ? "locked" : heldItem === "bow" ? "shooting" : "back",
+                            display: zones.some(z => z.id==="forge" && !bowUnlocked() && z.bowDisplay?.visible && z.group.visible),
                             visible: playerBow.visible,
                             draw: round(bowDraw),
                             size: box.getSize(new THREE.Vector3()).toArray().map(round),
@@ -3004,7 +3134,7 @@
 
                         const node = oreNodes.find(n => n.tierId === tierId && n.monster);
                         if (!node) return null;
-                        if (!node.monsterRevealed) revealOreMonster(node);
+                        if (!node.monsterRevealed) revealOreMonster(node, true);
                         const foe = node.monster;
                         const d = foe.userData;
                         // 打死过的也能再用：这台架一跑几十场，而每层只有两三只守卫。
@@ -3137,6 +3267,10 @@
                 ui.tutorial = document.getElementById("tutorial");
                 ui.tutorialCopy = document.getElementById("tutorial-copy");
                 ui.toast = document.getElementById("toast");
+                ui.tileHint = document.getElementById("tile-hint");
+                ui.blockDonate = document.getElementById("block-donate");
+                ui.blockDonate.addEventListener("pointerdown",e=>e.stopPropagation());
+                ui.blockDonate.addEventListener("click",donateBlock);
                 ui.guide = document.getElementById("guide-arrow");
                 ui.damage = document.getElementById("damage-layer");
                 ui.eggLock = document.getElementById("egg-lock");
@@ -3204,8 +3338,8 @@
                     roughness: 0.32,
                     metalness: 0.6
                 });
-                // 钻石用八面体：金币是扁圆片，俯视下两者的剪影必须一眼分得开，光靠颜色不够。
-                shared.gem = new THREE.OctahedronGeometry(0.28);
+                // 钻石用六棱扁晶：与圆金币、尖菱形宝石在轮廓上区分。
+                shared.gem = new THREE.CylinderGeometry(0.28, 0.28, 0.22, 6);
                 shared.gemMat = new THREE.MeshStandardMaterial({
                     color: 0x5fe6ff,
                     emissive: 0x0f7fa8,
@@ -3215,6 +3349,9 @@
                 });
                 // 埋在矿里的金币要透过半透明石头看清，比普通金币更亮。
                 shared.oreCoinMat = new THREE.MeshStandardMaterial({
+                    transparent: HIDE_GUARDS,
+                    depthTest: !HIDE_GUARDS,
+                    depthWrite: !HIDE_GUARDS,
                     color: 0xffd94f,
                     emissive: 0xffa412,
                     emissiveIntensity: 1.15,
@@ -3242,6 +3379,9 @@
                     // 自发光用 emissive 那个压深的色而不是本体色：本体色本来就亮，
                     // 再拿它当自发光会把三档一起烧成白的（第一版就是这么白的）。
                     shared.oreShardMats[id] = new THREE.MeshStandardMaterial({
+                        transparent: HIDE_GUARDS,
+                        depthTest: !HIDE_GUARDS,
+                        depthWrite: !HIDE_GUARDS,
                         color: grade.color,
                         emissive: grade.emissive,
                         emissiveIntensity: 1.35,
@@ -3252,6 +3392,7 @@
                     // 外面套一层加色的壳，亮度就叠在矿石之上而不是被它乘下去——
                     // 「隔着墙也一眼看得见有货」全靠这一层。
                     shared.shardHaloMats[id] = new THREE.MeshBasicMaterial({
+                        depthTest: !HIDE_GUARDS,
                         color: grade.halo,
                         transparent: true,
                         opacity: 0.34,
@@ -3323,11 +3464,12 @@
                 fill.position.set(-20, 16, -22);
                 scene.add(fill);
                 shared.cityLight = new THREE.PointLight(0xffb45e, 0, 22);
-                shared.cityLight.position.set(0, 5, 0);
+                shared.cityLight.position.set(0, 5, CITY_OFFSET_Z);
                 scene.add(shared.cityLight);
             }
 
             function createArena() {
+                if (C_BLOCKS) return createBlockArena();
                 // 圆盘要兜住封印矿之外那几层远景，否则地面在半径 52 处齐口切断，
                 // 远景矿脉底下是一片虚空。远处会被雾吃掉八成，不会看出是块大圆盘。
                 const ground = new THREE.Mesh(
@@ -3371,7 +3513,7 @@
                 const inWall = value => walls.some(([near, far]) => value > near && value < far);
 
                 const decor = new THREE.Group();
-                for (let i = 0; i < 60; i++) {
+                for (let i = 0; i < 30; i++) {
                     // 只撒在扇形里：扇形外玩家走不到，石头摆过去纯属浪费draw call，
                     // 还会让远景看起来「那边也能过去」。
                     const angle = SECTOR.start + rand() * SECTOR.span;
@@ -3440,7 +3582,7 @@
                     rock.rotation.y = rand() * Math.PI;
                     rock.castShadow = collide > 0;
                     walls.add(rock);
-                    if (collide > 0) addSolidCollider(x, z, collide);
+                    if (collide > 0) addSolidCollider(x, z, collide).visual = rock;
                 };
 
                 // 主城的围墙：沿自由圆绕过扇形之外的那 270°，只在朝屏幕上方留一个口子。
@@ -3511,15 +3653,16 @@
                 const hits = [];
                 for (const collider of solidColliders) {
                     if (collider.radius <= 0) continue;
+                    const localZ = collider.z - CITY_OFFSET_Z;
                     // 岩壁在自由圆之外，不参与城内布局校验。
-                    if (Math.hypot(collider.x, collider.z) > 15) continue;
+                    if (Math.hypot(collider.x, localZ) > 15) continue;
                     const reach = collider.radius + CONFIG.playerRadius;
                     const nearX = Math.abs(collider.x) - reach;
                     const inTile = nearX < CITY_CLEAR.tileHalfX
-                        && collider.z - reach < CITY_CLEAR.tileMaxZ
-                        && collider.z + reach > CITY_CLEAR.tileMinZ;
+                        && localZ - reach < CITY_CLEAR.tileMaxZ
+                        && localZ + reach > CITY_CLEAR.tileMinZ;
                     const inAxis = nearX < CITY_CLEAR.axisHalfX
-                        && collider.z - reach < CITY_CLEAR.axisMaxZ;
+                        && localZ - reach < CITY_CLEAR.axisMaxZ;
                     if (!inTile && !inAxis) continue;
                     hits.push({
                         x: Number(collider.x.toFixed(2)),
@@ -3632,10 +3775,16 @@
                 playerRing.rotation.x = -Math.PI / 2;
                 playerRing.position.y = 0.04;
                 player.add(playerRing);
+                attackRangeRing = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 80),
+                    new THREE.MeshBasicMaterial({ color: 0x71dfff, transparent: true, opacity: 0,
+                        depthWrite: false, side: THREE.DoubleSide }));
+                attackRangeRing.rotation.x = -Math.PI / 2;
+                attackRangeRing.position.y = 0.09;
+                scene.add(attackRangeRing);
 
                 // 出生在广场里，不在城南。地贴搬到城北之后，原来那个 (0,10.5) 的出生点
                 // 会变成「先穿过整座城才能点第一张地贴」，正是这次要消掉的东西。
-                player.position.set(0, 0, -1.5);
+                player.position.set(0, 0, C_BLOCKS ? -7 : -1.5 + CITY_OFFSET_Z);
                 // 一出生就面朝第一个要走的地贴：背对目标的话玩家第一反应是往反方向走。
                 // 地贴在正北，所以这一朝同时也朝着矿区。
                 player.rotation.y = facingAngleTo(TILE_SLOTS["city-build"]);
@@ -3724,7 +3873,7 @@
                 playerCape.rotation.x = -0.16 - speedRatio * 0.22 + Math.sin(elapsed * 7) * 0.025;
 
                 if (playerWeapon.userData.swing > 0) {
-                    playerWeapon.userData.swing = Math.max(0, playerWeapon.userData.swing - dt * 4.8);
+                    playerWeapon.userData.swing = Math.max(0, playerWeapon.userData.swing - dt / (equipmentCooldown(true) * .9));
                     const swing = Math.sin((1 - playerWeapon.userData.swing) * Math.PI);
                     playerWeapon.rotation.z = playerWeapon.userData.baseRotationZ - swing * 1.15;
                     if (heldItem === "pick") playerRightArm.rotation.x -= swing * 0.85;
@@ -3733,6 +3882,10 @@
                 }
 
                 updateBowPose(dt, carryingEgg);
+                if (equipmentShowTimer > 0) {
+                    equipmentShowTimer = Math.max(0, equipmentShowTimer-dt);
+                    if (!carryingEgg) playerRightArm.rotation.x = -2.2;
+                }
                 if (attackLunge > 0) {
                     attackLunge = Math.max(0, attackLunge - dt * 5.5);
                     playerVisual.position.z = Math.sin((1 - attackLunge) * Math.PI) * 0.26;
@@ -3751,21 +3904,18 @@
 
                 attackTimer -= dt;
                 const target = nearestTarget();
-                // 手持物跟着当前瞄的目标走，而不是跟着「刚才打了谁」——于是弓是在进入射程时
-                // 就举起来的，够得着的那一刻玩家就看得出来，不用等第一箭飞出去才知道。
-                //
-                // 但「没有目标」不等于「该举镐」：射程边缘上守卫会被击退推出去、自己再走回来，
-                // 一进一出 nearestTarget 就返回一次 null。原先这里无条件退回举镐，实测一场
-                // 高级守卫的仗（58 秒）里手上那件东西翻了 56 次、约每秒一次，其中 65% 的时间
-                // 举着镐在打怪，还有 0.7 秒是箭在半空、手上却已经换成镐。
-                // 所以没有目标时保持原样：那一刻本来就没在打任何东西，两种握姿都不算说谎，
-                // 维持上一件是唯一不抖的选择。
-                if (target) setHeldItem(target.userData.type === "ore" ? "pick" : "bow");
+                // 射程边缘短暂丢失目标时保持举弓，脱战后收回背上。
+                bowStowTimer = Math.max(0, bowStowTimer - dt);
+                if (target) {
+                    const mining = target.userData.type === "ore";
+                    if (!mining) bowStowTimer = 0.65;
+                    setHeldItem(mining ? "pick" : "bow");
+                } else if (bowStowTimer === 0 && bowDraw === 0) setHeldItem("pick");
                 if (target && attackTimer <= 0) {
                     const mining = target.userData.type === "ore";
                     // 凿不动的矿放慢挥击间隔，否则每 0.3 秒一次弹开音效会变成噪音。
                     const blocked = mining && !canMine(target.userData.node);
-                    attackTimer = blocked ? 0.75 : (mining ? CONFIG.mineCooldown : CONFIG.attackCooldown);
+                    attackTimer = blocked ? 0.75 : equipmentCooldown(mining);
                     const facing = target.position.clone().sub(player.position).setY(0);
                     if (facing.lengthSq() > 0.01) {
                         player.rotation.y = lerpAngle(player.rotation.y, Math.atan2(facing.x, facing.z), 0.55);
@@ -3806,6 +3956,7 @@
 
             function resolveCirclePosition(from, to, radius) {
                 const result = to.clone();
+                if (C_BLOCKS) clampBlockPlayer(result, radius);
                 // 挨得近的两栋房子，碰撞圈本来就是重叠的（主城北面祭坛和民房之间就有 0.69 的重叠）。
                 // 只推一轮的话后一个圆会把人按回前一个圆里，收敛成一个哪个方向都动不了的死点。
                 // 多推几轮先解掉大部分，剩下的交给 escapeSolidPinch。
@@ -3828,6 +3979,7 @@
                 escapeSolidPinch(result, radius);
                 resolveOreWallPosition(result, radius);
                 escapeOreBand(result, radius);
+                if (C_BLOCKS) clampBlockPlayer(result, radius);
                 result.y = from.y;
                 return result;
             }
@@ -3909,7 +4061,7 @@
                     if (distance <= ring.innerRadius || distance >= ring.outerRadius) continue;
                     // 判据是「人所在的那格是不是实心」，不是嵌得多深。死点上每根柱子都认为人
                     // 正好贴在自己的面上、穿透为零，按深度判会一次都不触发，可他还是动不了。
-                    const ai = Math.floor((Math.atan2(result.z, result.x) - SECTOR.start) / ring.cellAngle);
+                    const ai = Math.floor((Math.atan2(result.z, result.x) - ring.angleStart) / ring.cellAngle);
                     const ri = Math.floor((distance - ring.innerRadius) / ring.cellDepth);
                     const column = columnAt(ring, ai, ri);
                     // 凿开的通道里 blockCount 是 0，所以站在自己挖出来的隧道里不会被弹走。
@@ -3923,11 +4075,12 @@
 
             // 矿墙按体素柱逐个挡人：凿穿一条通道后，通道正好就是能走过去的缺口。
             // 体素在「切向 × 径向」上是规整的矩形，所以用 OBB 而不是外接圆，隧道宽度才等于挖出来的宽度。
-            function resolveOreWallPosition(result, radius) {
-                for (let pass = 0; pass < 2; pass++) {
+            function resolveOreWallPosition(result, radius, exemptColumn = null) {
+                // 斜向矿柱交界需要多轮收敛，避免换引导路线后留下微小穿透。
+                for (let pass = 0; pass < 4; pass++) {
                     let pushed = false;
                     scanNearbyColumns(result, radius, column => {
-                        if (column.blockCount <= 0) return;
+                        if (column.blockCount <= 0 || column === exemptColumn) return;
                         const ox = result.x - column.x;
                         const oz = result.z - column.z;
                         const along = ox * -column.sinA + oz * column.cosA;
@@ -3980,6 +4133,7 @@
             // 而且和它们自己「打不通就进不来」正好对称。
             const SIGHT_PROBE_RADIUS = 0.15;
             function inPlayerSight(enemy) {
+                if (C_BLOCKS && enemy.position.z < blockFront()) return false;
                 if (enemy.userData.type !== "rover") return true;
                 return !pathCrossesOre(player.position, enemy.position, SIGHT_PROBE_RADIUS);
             }
@@ -4042,7 +4196,7 @@
                 // 主循环直接调这儿，那条路上 heldItem 还是上一帧的值。
                 // 武器 Lv1 还没买到弓，这一段退回近战挥击（见 bowUnlocked）。
                 const shooting = !mining && bowUnlocked();
-                const color = mining ? target.userData.node.tier.glow : weaponArcColor();
+                const color = mining ? PICK_STYLES[pickaxeLevel-1].glow : weaponArcColor();
                 playSound("attack");
 
                 let delay;
@@ -4121,11 +4275,11 @@
             // 溅射的地面光圈。橙红，和顶格那一级的箭矢弧光、以及买它时地贴上那把橙色的弓
             // 同一个色系——玩家得能把这一圈读成「我买的那件东西在起作用」，
             // 而不是又一个怪物预警。
-            function spawnSplashRing(at, radius) {
+            function spawnSplashRing(at, radius, color = 0xffa347) {
                 const ring = new THREE.Mesh(
                     new THREE.RingGeometry(radius * 0.36, radius * 0.52, 32),
                     new THREE.MeshBasicMaterial({
-                        color: 0xffa347,
+                        color,
                         transparent: true,
                         opacity: 0.82,
                         side: THREE.DoubleSide,
@@ -4183,7 +4337,9 @@
                     depthWrite: false
                 });
                 const tip = new THREE.Mesh(shared.box, tipMat);
-                const bulk = 0.14 * style.tip;
+                const empowered = (weaponLevel >= 3 && sequence === 3) || firstUpgradeStrike.bow;
+                const bulk = 0.14 * style.tip * (empowered ? 1.7 : 1);
+                if (firstUpgradeStrike.bow) { buildPopEffect(start,12,color); firstUpgradeStrike.bow=false; }
                 tip.scale.set(bulk, bulk, 0.32 * style.tip);
                 tip.position.z = 0.44;
                 group.add(tip);
@@ -4309,7 +4465,8 @@
                 // 横扫时柔性拉远。炸药桶就在矿墙脚下，玩家站在爆点旁边，不像早先那样整道墙
                 // 都在画框外，所以只需要小幅抬起来把塌陷的两端收进来。
                 const lift = sweep.lift * 6;
-                const desired = cameraFocus.clone().add(new THREE.Vector3(0, 26 + lift, 19.5 + lift * 0.7));
+                const framingScale = C_BLOCKS ? Math.max(1, 0.78 / camera.aspect) : 1;
+                const desired = cameraFocus.clone().add(new THREE.Vector3(0, (FOLLOW_CAMERA.height + lift) * framingScale, (FOLLOW_CAMERA.back + lift * 0.7) * framingScale));
                 camera.position.lerp(desired, 1 - Math.exp(-7.5 * dt));
                 applyCameraShake(dt);
                 camera.lookAt(cameraFocus);
@@ -4318,8 +4475,8 @@
             function applyCameraShake(dt) {
                 if (cameraShake <= 0) return;
                 cameraShake = Math.max(0, cameraShake - dt * 1.7);
-                camera.position.x += (Math.random() - 0.5) * cameraShake;
-                camera.position.y += (Math.random() - 0.5) * cameraShake * 0.5;
+                camera.position.x += (random() - 0.5) * cameraShake;
+                camera.position.y += (random() - 0.5) * cameraShake * 0.5;
             }
 
             // 终局运镜会贴着地面从城里拍向巨龙，中途要穿过矿墙。半透明矿石糊在镜头上
@@ -4341,8 +4498,448 @@
                 }
             }
 
+            function updateAttackRange(dt) {
+                const range = playerAttackRange() + 1.4;
+                const visible = weaponEnabled() && weaponLevel >= 2 && !cinematic.active && !ctaOpen &&
+                    enemies.some(e => e.userData.alive && flatDistance(e.position, player.position) < range + 5 && inPlayerSight(e));
+                attackRangeRing.material.opacity = THREE.MathUtils.lerp(attackRangeRing.material.opacity, visible ? 0.32 : 0, 1 - Math.exp(-6 * dt));
+                attackRangeRing.visible = attackRangeRing.material.opacity > 0.01;
+                attackRangeRing.scale.setScalar(range);
+                attackRangeRing.position.copy(player.position).setY(0.09);
+            }
+
+            // C 独立地图。A/B 不读取这些锚点、门或区块状态。
+            const C_DISTRICTS = [
+                { name: "出生营地", en: "BASE CAMP", near: -3, far: -12, gate: -18.4 },
+                { name: "居民锻造街", en: "SMITHY QUARTER", near: -12, far: -18.4, gate: -26.4 },
+                { name: "工坊与龙巢", en: "WORKSHOP & NEST", near: -18.4, far: -26.4, gate: -35.5 },
+                { name: "前哨城关", en: "FRONTIER KEEP", near: -26.4, far: -35.5, gate: -49 }
+            ];
+            const C_SERVICE_SLOTS = {
+                forge: { x: -2.9, z: -16.2 }, pickaxe: { x: -2.9, z: -24 },
+                hatchery: { x: 2.9, z: -24 }, evolve: { x: 2.9, z: -44.5 },
+                frontForge: { x: -2.9, z: -34 }, frontPickaxe: { x: 2.9, z: -34 }, frontHatchery: {x:-2.9,z:-29.8}
+            };
+            const blockState = { districts: [], pending: [], phase: [], blasts: [], evolveSlot:null, fallback: 0, fallbackEvents: [], route: "hatch-first" };
+            function createBlockCoinBatches() {
+                shared.blockCoins = [false,true].map(ghost => {
+                    const batch = new THREE.InstancedMesh(shared.coin,shared.coinMat,CONFIG.maxCoinDrops);
+                    batch.count=0;batch.castShadow=!ghost;batch.frustumCulled=false;
+                    batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(batch);return batch;
+                });
+            }
+            function updateBlockCoinBatches() {
+                const counts=[0,0];
+                for(const coin of coinDrops) {
+                    if(coin.gem || coin.shard)continue;
+                    const i=coin.ghost?1:0;coin.mesh.updateMatrix();
+                    shared.blockCoins[i].setMatrixAt(counts[i]++,coin.mesh.matrix);
+                }
+                shared.blockCoins.forEach((b,i)=>{b.count=counts[i];b.instanceMatrix.needsUpdate=true;});
+            }
+            function setupBlockLayout() {
+                CONFIG.arenaRadius = 58;
+                // 窄街区使用独立尺寸，显示和付款触发共用；两侧地贴之间留 3 米主街。
+                CONFIG.zoneTileSize = 2.6;
+                ORE_TIERS.low.ringRadius = 23;
+                ORE_TIERS.mid.ringRadius = 32;
+                ORE_TIERS.high.ringRadius = 43;
+                ORE_TIERS.sealed.ringRadius = 51.2;
+                Object.assign(TILE_SLOTS["city-build"], { x: 0, z: -10 });
+                Object.assign(TILE_SLOTS.seal, { x: 0, z: -47.8 });
+                Object.assign(TILE_SLOTS.evolve, C_SERVICE_SLOTS.evolve);
+                Object.assign(BUILDING_SLOTS.keep, { x: 0, z: -3.9, radius: 1.8 });
+                Object.assign(BUILDING_SLOTS.workshop, { x: -5.3, z: -15.2, radius: 1 });
+                Object.assign(BUILDING_SLOTS.nest, { x: 5.3, z: C_SERVICE_SLOTS.hatchery.z, radius: 1 });
+                Object.assign(BUILDING_SLOTS.altar, { x: 5.3, z: -31, radius: 1 });
+            }
+            function blockNodeLevel(node) {
+                if (node.tierId === "low") return node.id === "low-0" ? 1 : 2;
+                return node.tierId === "mid" ? 3 : 4;
+            }
+            function blockNodes(level) { return oreNodes.filter(n => blockNodeLevel(n) === level && !n.tier.sealed); }
+            function blockColumnRequired(column, level = blockNodeLevel(column.node)) {
+                const plot = C_DISTRICTS[level];
+                if (!plot) return false;
+                // 用矿柱的实际占地与下一街区相交判断；峡谷外和旧营地边角的矿不是建设前置。
+                const dx = Math.abs(column.sinA) * column.halfArc + Math.abs(column.cosA) * column.halfDepth;
+                const dz = Math.abs(column.cosA) * column.halfArc + Math.abs(column.sinA) * column.halfDepth;
+                return Math.abs(column.x) - dx < 6.3 && column.z - dz < plot.near && column.z + dz > plot.far;
+            }
+            function blockProgress(level) {
+                const nodes = blockNodes(level);
+                const columns = nodes.flatMap(n => n.columns.filter(c => blockColumnRequired(c, level)));
+                return { total: columns.length, remaining: columns.filter(c => c.count > 0).length,
+                    guards: nodes.filter(n => n.monster && n.monster.userData.alive).length };
+            }
+            function blockReady(level) {
+                const p = blockProgress(level);
+                return level > 0 && level < 4 && p.total > 0 && p.remaining === 0 && p.guards === 0;
+            }
+            function blockFront() { return C_DISTRICTS[Math.max(0, cityLevel - 1)].gate; }
+            function clampBlockPlayer(point, radius) {
+                point.x = THREE.MathUtils.clamp(point.x, -6.4 + radius, 6.4 - radius);
+                point.z = THREE.MathUtils.clamp(point.z, blockFront() + radius + 0.2, -3 - radius);
+            }
+            function blockTileSlot(id) {
+                if (id === "city-upgrade") return { x: 0, z: [-11,-12.2,-20][Math.max(0,cityLevel-1)] };
+                if (id === "evolve" && blockState.evolveSlot) return blockState.evolveSlot;
+                if (id === "hatchery" && cityLevel>=4) return C_SERVICE_SLOTS.frontHatchery;
+                if (id === "forge") return C_SERVICE_SLOTS[cityLevel >= 4 ? "frontForge" : "forge"];
+                if (id === "pickaxe") return C_SERVICE_SLOTS[cityLevel >= 4 ? "frontPickaxe" : "pickaxe"];
+                if (C_SERVICE_SLOTS[id]) return C_SERVICE_SLOTS[id];
+                return TILE_SLOTS[id];
+            }
+            function blockAudit() {
+                return { front: blockFront(), progress: blockProgress(cityLevel), blasts:blockState.blasts, fallback: blockState.fallback, fallbackEvents: blockState.fallbackEvents, pending: blockState.pending.length,
+                    pads: zones.filter(z=>z.group.visible && !z.complete).map(z=>({id:z.id,object:z.group}))
+                        .map(({id,object})=>({id,x:object.position.x,z:object.position.z,size:CONFIG.zoneTileSize*1.06})),
+                    colliders: solidColliders.map(c=>({...c})),
+                    districts: blockState.districts.map((d, i) => ({ name: C_DISTRICTS[i].name,
+                        built: d.built, phase: blockState.phase[i], buildings: d.structures.filter(o => o.visible).length,
+                        gate: d.gate.visible, near: C_DISTRICTS[i].near, far: C_DISTRICTS[i].far })),
+                    nodes: oreNodes.map(n => ({ id: n.id, level: blockNodeLevel(n), remaining: n.remaining, cleared: n.cleared })) };
+            }
+            function blockBox(parent, x, y, z, sx, sy, sz, material) {
+                const mesh = new THREE.Mesh(shared.box, material);
+                mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz);
+                mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
+            }
+            function createBlockArena() {
+                const ground = new THREE.Mesh(new THREE.PlaneGeometry(180, 180), shared.groundMat);
+                ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+                const rand = seededRandom(3001), matrices = [], rock = new THREE.Object3D();
+                for (let z = -1; z > -57; z -= 2.5) for (const side of [-1, 1]) {
+                    const height = 3.4 + rand() * 2;
+                    rock.position.set(side * (7.4 + rand() * 0.45), height / 2, z);
+                    rock.scale.set(2.6,height,3);rock.rotation.y = (rand() - 0.5) * 0.3;
+                    rock.updateMatrix();matrices.push(rock.matrix.clone());
+                }
+                rock.position.set(0,1.7,-1.8);rock.scale.set(16,3.4,2);rock.rotation.y=0;
+                rock.updateMatrix();matrices.push(rock.matrix.clone());
+                const cliffs=new THREE.InstancedMesh(shared.box,shared.rimMat,matrices.length);
+                matrices.forEach((m,i)=>cliffs.setMatrixAt(i,m));cliffs.instanceMatrix.needsUpdate=true;
+                cliffs.castShadow=true;cliffs.receiveShadow=true;cliffs.frustumCulled=false;scene.add(cliffs);
+            }
+            function createBlockCity() {
+                city.group = new THREE.Group(); scene.add(city.group);
+                const roadMaterial = shared.blockRoadMat = new THREE.MeshStandardMaterial({ color: 0x655b68, roughness: 0.95 });
+                city.buildings.keep = createKeep(); city.buildings.keep.scale.setScalar(0.72);
+                city.buildings.workshop = createWorkshop(); city.buildings.workshop.scale.setScalar(0.65);
+                city.buildings.nest = createNest(); city.buildings.nest.scale.setScalar(0.65);
+                city.buildings.altar = createAltar(); city.buildings.altar.scale.setScalar(0.65);
+                for (let i = 0; i < C_DISTRICTS.length; i++) {
+                    const cfg = C_DISTRICTS[i], center = (cfg.near + cfg.far) / 2;
+                    // 同一地形的三列分别为左侧用地、石路、右侧用地；面片相接而不叠放。
+                    // 原路面 y=.08 与地贴共面，原地板 y=.065 还高于地贴底板，造成深度争抢。
+                    const floorGeometry = new THREE.PlaneGeometry(12.6, cfg.near - cfg.far, 3, 1);
+                    const positions = floorGeometry.attributes.position;
+                    for (let v=0;v<positions.count;v++) positions.setX(v,[-6.3,-1.65,1.65,6.3][v%4]);
+                    positions.needsUpdate=true; floorGeometry.clearGroups();
+                    floorGeometry.addGroup(0,6,0);floorGeometry.addGroup(6,6,1);floorGeometry.addGroup(12,6,0);
+                    const floor = new THREE.Mesh(floorGeometry, [shared.cityFloorMat,roadMaterial]);
+                    floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0.04, center);
+                    floor.receiveShadow = true; floor.visible = i === 0; city.group.add(floor);
+                    const gate = new THREE.Group(); city.group.add(gate);
+                    for (const x of [-4, -2, 0, 2, 4]) blockBox(gate, x, 0.7, cfg.gate, 1.9, 1.4, 0.55, shared.cityStoneMat);
+                    const structures = [], d = { built: false, floor, gate, structures, props: [] };
+                    const outline = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(-6.3,0.1,cfg.near), new THREE.Vector3(6.3,0.1,cfg.near),
+                        new THREE.Vector3(6.3,0.1,cfg.far), new THREE.Vector3(-6.3,0.1,cfg.far)
+                    ]), new THREE.LineDashedMaterial({color:0xffe3a3,dashSize:0.45,gapSize:0.25}));
+                    outline.computeLineDistances(); outline.visible=false;city.group.add(outline);d.outline=outline;
+                    for (const side of [-1, 1]) {
+                        // 边缘建筑有真实占地，中央 4 米主街永远留空。
+                        const z = i === 0 ? -8 : i === 1 ? -16 : i === 2 ? -20.1 : -28.8;
+                        if (i !== 2 && !((i === 1 || i === 3) && side === -1)) {
+                            const house = createHouse(3600 + i * 3 + side); house.scale.setScalar(i === 0 ? 0.82 : 0.65);
+                            house.position.set(side * (i === 0 ? 4.5 : 5.3), 0, z); house.rotation.y = -side * Math.PI / 2;
+                            house.visible = false; city.group.add(house); structures.push(house);
+                        }
+                        const pillar = blockBox(city.group, side * 5.2, 1.7, cfg.far + 0.5, 0.7, 3.4, 0.7, shared.cityStoneMat);
+                        pillar.visible = false; d.props.push(pillar);
+                        const flag = createFlagpole(3700 + i * 2 + side); flag.position.set(side * 5.2, 0, cfg.far + 0.5);
+                        flag.visible = false; city.group.add(flag); d.props.push(flag);
+                    }
+                    // 门柱间石路属于地形，不作为建筑升起，也不叠加额外平面。
+                    const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 96;
+                    const ctx = canvas.getContext("2d"); ctx.fillStyle = "#302934"; ctx.fillRect(0,0,512,96);
+                    ctx.fillStyle = "#ffe9b9"; ctx.font = "bold 34px sans-serif"; ctx.textAlign = "center";
+                    ctx.fillText(LANG === "en" ? cfg.en : cfg.name, 256, 60);
+                    // 路侧门牌保留街区识别；不再横跨主街遮住角色、设施地贴和价格。
+                    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.7,0.51), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),side:THREE.DoubleSide}));
+                    sign.position.set(-4.8,2.9,cfg.far+0.78); sign.visible = false; city.group.add(sign); d.props.push(sign);
+                    blockState.districts.push(d); blockState.phase.push(i ? "locked" : "camp");
+                }
+                blockState.districts[0].structures.forEach(o => { o.visible=true; addSolidCollider(o.position.x,o.position.z,1.15); });
+            }
+            function queueBlockBuilding(object, radius, delay = 0) {
+                blockState.pending.push({ object, radius, delay });
+            }
+            function buildBlockDistrict(level) {
+                const d = blockState.districts[level-1]; if (d.built) return;
+                d.built = true; blockState.phase[level-1] = "building"; d.floor.visible = true;
+                if (level > 1) { blockState.districts[level-2].gate.visible = false; markRun(`district-${level-1}`); }
+                d.props.forEach((p, i) => { p.visible=true; animateChunkRise(p, i*0.08); });
+                d.structures.forEach((p,i) => { if (!p.visible) queueBlockBuilding(p,level===1?1.15:1,0.2+i*0.15); });
+                if (level===1) queueBlockBuilding(city.buildings.keep,1.8);
+                if (level===2) queueBlockBuilding(city.buildings.workshop,1);
+                if (level===3) {
+                    queueBlockBuilding(city.buildings.nest,1);
+                    const workshop=createHouse(5018); workshop.position.set(-5.3,0,C_SERVICE_SLOTS.pickaxe.z); workshop.scale.setScalar(0.65);
+                    workshop.visible=false; city.group.add(workshop); d.structures.push(workshop); queueBlockBuilding(workshop,1);
+                }
+                if (level===4) {
+                    queueBlockBuilding(city.buildings.altar,1);
+                    for(const side of [-1,1]) {
+                        const workshop=createHouse(5021+side); workshop.position.set(side*5.3,0,-34); workshop.scale.setScalar(0.65);
+                        workshop.visible=false; city.group.add(workshop); d.structures.push(workshop); queueBlockBuilding(workshop,1);
+                    }
+                    if(!pet) {
+                        const nest=city.buildings.nest,old=nest.position.clone();
+                        blockState.pending=blockState.pending.filter(item=>item.object!==nest);
+                        const collider=solidColliders.find(c=>c.x===old.x && c.z===old.z);
+                        if(collider)solidColliders.splice(solidColliders.indexOf(collider),1);
+                        nest.position.set(-5.3,0,-29.8);nest.visible=false;nest.userData.riseBaseY=0;
+                        city.nestPos.set(-5.3,.9,-29.8);queueBlockBuilding(nest,1);
+                        if(eggPickup){eggPickup.mesh.position.copy(findClearSpot(new THREE.Vector3(-2.9,0,-28))).setY(.95);eggPickup.progress=0;}
+                    }
+                    d.gate.visible=false;
+                }
+                for (const zone of zones) moveZone(zone,blockTileSlot(zone.id));
+                defer(1.6,()=>{blockState.phase[level-1]="built";});
+                toast(LANG === "en" ? `${C_DISTRICTS[level-1].en} BUILT` : `${C_DISTRICTS[level-1].name}建成，城镇向前扩张`);
+            }
+            function updateBlockDistricts(dt) {
+                blockState.districts.forEach((d,i)=>{d.outline.visible=i===cityLevel && cityLevel>0 && cityLevel<4 && !d.built;});
+                for (const item of [...blockState.pending]) {
+                    item.delay-=dt; if(item.delay>0) continue;
+                    const at=item.object.position;
+                    const occupied=[player,pet,...enemies.filter(e=>e.userData.alive)].filter(Boolean)
+                        .some(e=>flatDistance(e.position,at)<item.radius+0.9);
+                    if(occupied) continue;
+                    item.object.visible=true; animateChunkRise(item.object);
+                    addSolidCollider(at.x,at.z,item.radius);
+                    blockState.pending.splice(blockState.pending.indexOf(item),1);
+                }
+                if(cityLevel>0 && cityLevel<4) {
+                    const i=cityLevel;
+                    blockState.phase[i]="fundraising";
+                }
+                // 每种升级只保留一个入口；迁到前沿时保留原 zone 的付款与等级状态。
+                for (const id of ["forge", "pickaxe"]) {
+                    const service=zones.find(z=>z.id===id);
+                    if(service)moveZone(service,blockTileSlot(id),true);
+                }
+                const zone=zones.find(z=>z.id==="city-upgrade");
+                if(zone) { moveZone(zone,blockTileSlot(zone.id)); zone.group.visible=!cityGate; }
+            }
+            function donateBlock() {
+                if(!C_BLOCKS || cinematic.active || ctaOpen)return;
+                const zone=zones.find(z=>z.id==="city-upgrade");
+                if(!zone || !zone.group.visible || !isZonePayable(zone) || zone.remoteBudget>0)return;
+                zone.remoteBudget=Math.min(coins,zone.cost-zone.paid);
+                if(zone.remoteBudget>0){zone.requiresReentry=false;zone.paymentTimer=0;}
+            }
+            function updateBlockDonation() {
+                const z=C_BLOCKS && zones.find(z=>z.id==="city-upgrade" && z.group.visible && !z.complete);
+                ui.blockDonate.hidden=!z || cinematic.active || ctaOpen;
+                ui.tileHint.style.bottom=z?"170px":"";
+                if(!z)return;
+                const amount=Math.min(coins,z.cost-z.paid);
+                ui.blockDonate.disabled=!isZonePayable(z) || amount<=0 || z.remoteBudget>0;
+                const label=z.remoteBudget>0?"正在捐献":amount>0?`就地捐献 ${amount} 金币`:"采矿筹集金币";
+                ui.blockDonate.textContent=`${C_DISTRICTS[cityLevel].name} · ${z.paid}/${z.cost}\n${label} · 付满爆破`;
+            }
+            function blastBlockPlot(level) {
+                if(blockState.blasts.some(b=>b.level===level))return;
+                const nodes=blockNodes(level),before=blockProgress(level);
+                const cfg=C_DISTRICTS[level],center=new THREE.Vector3(0,0,(cfg.near+cfg.far)/2);
+                let cells=0;
+                for(const node of nodes) {
+                    const columns=node.columns.filter(c=>c.count>0 && blockColumnRequired(c,level));
+                    const chunks=columns.flatMap(c=>c.cells.filter(i=>!node.cells[i].removed));
+                    for(let i=0;i<Math.min(18,chunks.length);i++)launchOreChunk(node,node.cells[chunks[Math.floor(i*chunks.length/Math.min(18,chunks.length))]]);
+                    for(const c of columns){cells+=c.count;pulverizeColumn(c,false,true);}
+                    node.instanced.instanceMatrix.needsUpdate=true;
+                    node.penetration=segmentPenetration(node,node.columns.map(c=>c.ai));
+                    if(node.penetration>=1)breachOreSegment(node);
+                    if(node.remaining<=0 && !node.cleared)clearOreNode(node);
+                }
+                buildDust(center.clone().setY(1),18,4,0xc5b3a0);buildPopEffect(center,24,0xffd887);
+                cameraShake=Math.max(cameraShake,.65);playSound("break");
+                blockState.blasts.push({level,at:runClock,cells,before:before.remaining,after:blockProgress(level).remaining});
+                markRun(`blast-${level}`);
+            }
+            function blockGuideGoal() {
+                const ready=z=>z && z.group.visible && !z.complete && !z.requiresReentry && isZonePayable(z) &&
+                    walletOf(tileCurrency(z.id))>=z.cost-z.paid;
+                const find=id=>zones.find(z=>z.id===id && !z.complete);
+                if(!cityLevel) return new THREE.Vector3(0,0,-10);
+                if(finaleStarted) return null;
+                if(cityLevel>=3 && eggPickup && !pet && !carryingEgg &&
+                    find("hatchery")?.group.visible && canGuideToPosition(eggPickup.mesh.position) &&
+                    (blockState.route!=="build-first" || cityLevel>=4))return eggPickup.mesh.position.clone();
+                for(const id of ["forge","pickaxe"]) { const z=find(id); if(id==="pickaxe" && pickaxeLevel>=3)continue;if(ready(z))return z.position.clone(); }
+                const hatch=find("hatchery");
+                if(carryingEgg && ready(hatch))return hatch.position.clone();
+                const evolve=find("evolve"); if(ready(evolve))return evolve.position.clone();
+                const wave=enemies.find(e=>e.userData.wave && e.userData.alive); if(wave)return wave.position.clone();
+                const seal=find("seal");if(ready(seal))return seal.position.clone();
+                if(sealArmed){const n=oreNodes.find(n=>n.tier.sealed);if(n)return oreGuidePoint(n);}
+                const upgrade=find("city-upgrade");if(upgrade && isZonePayable(upgrade) && coins>=upgrade.cost-upgrade.paid && autoRun)donateBlock();
+                // 只引导当前及前方矿区，旧城区的边角矿保留为可选采集。
+                const guard=enemies.filter(e=>e.userData.alive && e.userData.type==="monster" &&
+                    e.position.z>blockFront()).sort((a,b)=>flatDistance(a.position,player.position)-flatDistance(b.position,player.position))[0];
+                if(guard)return guard.position.clone();
+                const plotColumns=blockNodes(cityLevel).filter(canMine).flatMap(n=>n.columns)
+                    .filter(c=>c.count>0 && blockColumnRequired(c));
+                plotColumns.sort((a,b)=>Math.hypot(a.x-player.position.x,a.z-player.position.z)-Math.hypot(b.x-player.position.x,b.z-player.position.z));
+                if(plotColumns.length)return new THREE.Vector3(plotColumns[0].x,0,plotColumns[0].z);
+                const nodes=oreNodes.filter(n=>!n.cleared && !n.tier.sealed && canMine(n) && blockNodeLevel(n)>=cityLevel);
+                nodes.sort((a,b)=>blockNodeLevel(a)-blockNodeLevel(b)||flatDistance(a.position,player.position)-flatDistance(b.position,player.position));
+                if(nodes.length)return oreGuidePoint(nodes[0]);
+                const rover=enemies.find(e=>e.userData.alive && e.position.z>blockFront());if(rover)return rover.position.clone();
+                return null;
+            }
+
+            function createCityRuins() {
+                const rand = seededRandom(6193);
+                for (let i = 0; i < 90; i++) {
+                    const angle = rand() * Math.PI * 2;
+                    const radius = 7 + rand() * 8.5;
+                    const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
+                    if ((Math.abs(x) < CITY_CLEAR.tileHalfX + 1 && z > CITY_CLEAR.tileMinZ - 1 && z < CITY_CLEAR.tileMaxZ + 1)
+                        || (Math.abs(x) < CITY_CLEAR.axisHalfX + 1 && z < CITY_CLEAR.axisMaxZ + 1)) continue;
+                    const mesh = new THREE.Mesh(shared.box, shared.rockMat);
+                    mesh.scale.set(0.55 + rand() * 0.8, 0.4 + rand() * 0.8, 0.5 + rand() * 0.7);
+                    mesh.position.set(x, mesh.scale.y / 2, z);
+                    mesh.rotation.y = angle;
+                    mesh.castShadow = true;
+                    city.group.add(mesh);
+                    ruins.push({ mesh, radius, cleared: false });
+                }
+            }
+
+            // 每级沿当前仍保留的北墙端点接出新区围墙，升级时替换连接段。
+            let frontierWalls = null;
+            let frontierWallLevel = 0;
+            function syncFrontierWalls() {
+                if (!frontierCity.active || frontierWallLevel === cityLevel) return;
+                if (frontierWalls) scene.remove(frontierWalls);
+                frontierWalls = new THREE.Group();
+                scene.add(frontierWalls);
+                frontierWallLevel = cityLevel;
+                const stage = city.stages[cityLevel - 1];
+                const segment = (a, b) => {
+                    const length = Math.hypot(b.x - a.x, b.z - a.z);
+                    const count = Math.ceil(length / 1.35);
+                    for (let i = 0; i < count; i++) {
+                        const t = (i + 0.5) / count;
+                        const height = i % 2 ? 1.24 : 1.72;
+                        const wall = new THREE.Mesh(shared.box, shared.cityStoneMat);
+                        wall.scale.set(length / count + 0.08, height, 0.78);
+                        wall.position.set(a.x + (b.x - a.x) * t, height / 2, a.z + (b.z - a.z) * t);
+                        wall.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+                        wall.castShadow = true; wall.receiveShadow = true;
+                        frontierWalls.add(wall);
+                        animateChunkRise(wall, i * 0.015);
+                    }
+                };
+                const edges = [];
+                for (const side of [-1, 1]) {
+                    const anchor = stage.walls.filter(w => w.geometry === shared.box &&
+                        w.position.z < 0 && w.position.x * side >= 7.5)
+                        .sort((a, b) => Math.abs(a.position.x) - Math.abs(b.position.x))[0];
+                    if (!anchor) continue;
+                    const points = [
+                        { x: anchor.position.x, z: anchor.position.z + CITY_OFFSET_Z },
+                        { x: side * 11.4, z: -13 },
+                        { x: side * 11.4, z: -21.7 },
+                        { x: side * 10.2, z: -22.7 },
+                        { x: side * 3.5, z: -22.7 }
+                    ];
+                    edges.push(points);
+                    for (let i = 1; i < points.length; i++) segment(points[i - 1], points[i]);
+                    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.8, 2.2, 8), shared.cityStoneMat);
+                    tower.position.set(side * 3.5, 1.1, -22.7);
+                    tower.castShadow = true;
+                    frontierWalls.add(tower);
+                    animateChunkRise(tower, 0.15);
+                }
+                if (edges.length === 2) {
+                    const outline = [...edges[0], ...edges[1].slice().reverse(), { x: 0, z: -6 }];
+                    const shape = new THREE.Shape();
+                    outline.forEach((p, i) => i ? shape.lineTo(p.x, -p.z) : shape.moveTo(p.x, -p.z));
+                    shape.closePath();
+                    const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), shared.cityFloorMat);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.y = 0.08;
+                    floor.receiveShadow = true;
+                    frontierWalls.add(floor);
+                }
+            }
+
+            function openFrontierConnection() {
+                if (!frontierCity.active) return;
+                for (const stage of city.stages) {
+                    for (const wall of stage.walls) {
+                        if (wall.position.z < 0 && Math.abs(wall.position.x) < 7.5) wall.visible = false;
+                    }
+                    for (const prop of stage.props) {
+                        if (prop.position.z < -8 && Math.abs(prop.position.x) < 7.5) prop.visible = false;
+                    }
+                }
+                syncFrontierWalls();
+            }
+
+            // A 的前沿广场只占已彻底清空的低级矿；不以打通一条隧道代替清空判定。
+            function updateFrontierCity() {
+                if (!CITY_GROW || frontierCity.active || cityLevel < 3 ||
+                    !oreRings.some(r => r.tierId === "low") || ringRemaining("low") > 0 || sweep.active) return;
+                frontierCity.active = true;
+                frontierCity.at = Number(runClock.toFixed(1));
+                const plaza = new THREE.Group();
+                scene.add(plaza);
+                // 功能建筑和碰撞体一起搬迁，地贴与中央通道两侧各留足步行空间。
+                const relocate = (id, x, z) => {
+                    const slot = BUILDING_SLOTS[id], building = city.buildings[id];
+                    const collider = solidColliders.find(c => c.x === slot.x &&
+                        c.z === slot.z + CITY_OFFSET_Z && c.radius === slot.radius);
+                    slot.x = x; slot.z = z - CITY_OFFSET_Z;
+                    building.position.set(x, 0, slot.z);
+                    if (collider) { collider.x = x; collider.z = z; }
+                    building.userData.parts.forEach((part, i) => animateChunkRise(part, i * 0.08));
+                };
+                relocate("workshop", 9, -18);
+                relocate("nest", -9, -15);
+                city.nestPos.set(-9, 0.9, -15);
+                // 蛋可能已在老城落巢，或正在飞往老巢；迁移时一并更新终点。
+                if (city.egg) city.egg.position.copy(city.nestPos);
+                if (eggPlace) eggPlace.end.copy(city.nestPos);
+                for (const x of [-9, 9]) {
+                    const house = createHouse(x < 0 ? 821 : 822);
+                    house.position.set(x, 0, -21);
+                    house.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2;
+                    plaza.add(house);
+                    addSolidCollider(x, -21, 1.35);
+                    animateChunkRise(house, 0.15);
+                }
+                for (const zone of zones) {
+                    const slot = FRONTIER_SLOTS[zone.id];
+                    if (slot && !zone.complete) moveZone(zone, slot);
+                }
+                openFrontierConnection();
+                markRun("frontier-city");
+                buildDust(new THREE.Vector3(0, 0.5, -18), 24, 5, 0xc5b3a0);
+                nudgePlayerOutOfCollision();
+                toast("低级矿区已扩建为前沿广场，升级设施已迁入");
+            }
+
             function createCity() {
+                if (C_BLOCKS) return createBlockCity();
                 city.group = new THREE.Group();
+                city.group.position.z = CITY_OFFSET_Z;
                 scene.add(city.group);
 
                 const ghost = new THREE.Mesh(
@@ -4369,6 +4966,7 @@
                 city.buildings.workshop = createWorkshop();
                 city.buildings.nest = createNest();
                 city.buildings.altar = createAltar();
+                createCityRuins();
             }
 
             function createCityStage(definition, innerRadius) {
@@ -4652,7 +5250,7 @@
 
                 group.userData.parts = [platform, bowl];
                 group.userData.glow = glow;
-                city.nestPos.set(slot.x, 0.9, slot.z);
+                city.nestPos.set(slot.x, 0.9, slot.z + CITY_OFFSET_Z);
                 return group;
             }
 
@@ -4688,14 +5286,21 @@
                 group.add(core);
                 group.userData.core = core;
                 group.userData.parts = [base, ...pillars, core];
-                city.altarPos.set(slot.x, 1.2, slot.z);
+                city.altarPos.set(slot.x, 1.2, slot.z + CITY_OFFSET_Z);
                 return group;
             }
 
             function buildCityStage(level) {
+                if (C_BLOCKS) return buildBlockDistrict(level);
                 const stage = city.stages[level - 1];
                 if (!stage || stage.built) return;
                 stage.built = true;
+                for (const ruin of ruins) {
+                    if (!ruin.cleared && ruin.radius <= stage.definition.radius + 0.8) {
+                        ruin.cleared = true;
+                        animateChunkSink(ruin.mesh);
+                    }
+                }
 
                 stage.floor.visible = true;
                 animateFloorReveal(stage.floor);
@@ -4714,12 +5319,12 @@
                     prop.visible = true;
                     animateChunkRise(prop, 0.12 + index * 0.06);
                 });
-                for (const slot of stage.houses) addSolidCollider(slot.x, slot.z, 1.35);
+                for (const slot of stage.houses) addSolidCollider(slot.x, slot.z + CITY_OFFSET_Z, 1.35);
 
                 if (level === 1) {
                     city.buildings.keep.visible = true;
                     city.buildings.keep.userData.parts.forEach((part, index) => animateChunkRise(part, 0.1 + index * 0.09));
-                    addSolidCollider(BUILDING_SLOTS.keep.x, BUILDING_SLOTS.keep.z, BUILDING_SLOTS.keep.radius);
+                    addSolidCollider(BUILDING_SLOTS.keep.x, BUILDING_SLOTS.keep.z + CITY_OFFSET_Z, BUILDING_SLOTS.keep.radius);
                 }
                 const grown = city.buildings.keep.userData.growth[level];
                 if (grown) {
@@ -4731,20 +5336,21 @@
                 if (level === 2) {
                     city.buildings.workshop.visible = true;
                     city.buildings.workshop.userData.parts.forEach((part, index) => animateChunkRise(part, 0.14 + index * 0.08));
-                    addSolidCollider(BUILDING_SLOTS.workshop.x, BUILDING_SLOTS.workshop.z, BUILDING_SLOTS.workshop.radius);
+                    addSolidCollider(BUILDING_SLOTS.workshop.x, BUILDING_SLOTS.workshop.z + CITY_OFFSET_Z, BUILDING_SLOTS.workshop.radius);
                 }
                 if (level === 3) {
                     city.buildings.nest.visible = true;
                     city.buildings.nest.userData.parts.forEach((part, index) => animateChunkRise(part, 0.14 + index * 0.08));
-                    addSolidCollider(BUILDING_SLOTS.nest.x, BUILDING_SLOTS.nest.z, BUILDING_SLOTS.nest.radius);
+                    addSolidCollider(BUILDING_SLOTS.nest.x, BUILDING_SLOTS.nest.z + CITY_OFFSET_Z, BUILDING_SLOTS.nest.radius);
                 }
                 if (level === 4) {
                     city.buildings.altar.visible = true;
                     city.buildings.altar.userData.parts.forEach((part, index) => animateChunkRise(part, 0.14 + index * 0.08));
                     city.buildings.keep.userData.banner.visible = true;
-                    addSolidCollider(BUILDING_SLOTS.altar.x, BUILDING_SLOTS.altar.z, BUILDING_SLOTS.altar.radius);
+                    addSolidCollider(BUILDING_SLOTS.altar.x, BUILDING_SLOTS.altar.z + CITY_OFFSET_Z, BUILDING_SLOTS.altar.radius);
                 }
 
+                openFrontierConnection();
                 shared.cityLight.intensity = 0.6 + level * 0.42;
                 shared.cityLight.distance = 16 + level * 5;
                 nudgePlayerOutOfCollision();
@@ -4824,6 +5430,25 @@
 
                 // 价格前面的货币标记：圆形金币 / 方形钻石 / 尖角菱形宝石。地贴是玩家判断
                 // 「该攒哪种钱」的唯一入口，光换数字不换形状会让人一路攒错。
+                if (C_BLOCKS && zone.id === "city-upgrade") {
+                    context.fillStyle = "#ffe3a3";
+                    context.font = "bold 18px sans-serif"; context.textAlign = "center";
+                    const names = LANG === "en" ? ["", "BUILD SMITHY", "BUILD WORKSHOP", "BUILD OUTPOST"] : ["", "扩建居民街", "扩建工坊区", "扩建前哨"];
+                    context.fillText(names[cityLevel] || "", 96, 40);
+                }
+                if (C_BLOCKS) {
+                    context.fillStyle = ready ? "#7bf0a8" : "#ffe3a3";
+                    context.font = "bold 15px sans-serif"; context.textAlign = "center";
+                    context.fillText(zoneStatus(zone), 96, 116, 162);
+                }
+                if (zone.id === "hatchery" && zone.cost === 0) {
+                    context.fillStyle = "#ffffff";
+                    context.font = "bold 30px Arial";
+                    context.textAlign = "center";
+                    context.fillText("孵化台", 96, 149);
+                    zone.tileTexture.needsUpdate = true;
+                    return;
+                }
                 const currency = tileCurrency(zone.id);
                 const grade = tileShardGrade(zone.id);
                 if (currency === "shard" && grade) {
@@ -4841,8 +5466,14 @@
                     context.fillStyle = "#5fe6ff";
                     context.save();
                     context.translate(66, 148);
-                    context.rotate(Math.PI / 4);
-                    context.fillRect(-10, -10, 20, 20);
+                    context.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const a = i * Math.PI / 3;
+                        if (i === 0) context.moveTo(Math.cos(a) * 13, Math.sin(a) * 13);
+                        else context.lineTo(Math.cos(a) * 13, Math.sin(a) * 13);
+                    }
+                    context.closePath();
+                    context.fill();
                     context.restore();
                 } else {
                     context.fillStyle = "#ffd23c";
@@ -4859,7 +5490,7 @@
                 context.fillStyle = "#ffffff";
                 context.font = "bold 30px Arial";
                 context.textAlign = "left";
-                context.fillText(`${zone.paid}/${zone.cost}`, 86, 149);
+                context.fillText(zone.cost === 0 ? (LANG === "en" ? "FREE" : "免费") : `${zone.paid}/${zone.cost}`, 86, 149);
 
                 zone.tileTexture.needsUpdate = true;
             }
@@ -5005,18 +5636,21 @@
             // 城里同一处，所以这张贴实际不动（理由见 TILE_SLOTS["pickaxe-last"]）。
             // 创建和重新布防两条路都走这里，免得换槽位的规则各写一份。
             function tileSlot(id) {
+                if (C_BLOCKS) return blockTileSlot(id);
+                if (frontierCity.active && FRONTIER_SLOTS[id]) return FRONTIER_SLOTS[id];
+                if (VERSION === "a" && id === "evolve") return { x: 0, z: -10.9 };
                 if (id === "pickaxe" && ECON.pickaxeCost &&
                     pickaxeLevel >= ECON.pickaxeCost.length) return TILE_SLOTS["pickaxe-last"];
                 return TILE_SLOTS[id];
             }
 
-            function moveZone(zone, slot) {
+            function moveZone(zone, slot, preserveEntry = false) {
                 if (zone.position.x === slot.x && zone.position.z === slot.z) return;
                 zone.group.position.set(slot.x, 0, slot.z);
                 zone.position.copy(zone.group.position);
                 // 挪完重新判一次：玩家不可能站在刚出现在三十米外的那张贴上，
                 // 沿用上一处的 requiresReentry 会让他走到新位置后还得先走出去一趟。
-                zone.requiresReentry = isPlayerInsideZonePosition(zone.group.position);
+                if (!preserveEntry) zone.requiresReentry = isPlayerInsideZonePosition(zone.group.position);
             }
 
             function createZone(id, cost, onComplete) {
@@ -5036,7 +5670,8 @@
                     })
                 );
                 base.rotation.x = -Math.PI / 2;
-                base.position.y = 0.06;
+                // 新区地面最高为 0.08；底板和图案都必须高于它，避免共面闪烁及遮挡。
+                base.position.y = 0.12;
                 group.add(base);
 
                 const tile = new THREE.Mesh(
@@ -5048,8 +5683,18 @@
                     })
                 );
                 tile.rotation.x = -Math.PI / 2;
-                tile.position.y = 0.08;
+                tile.position.y = 0.14;
                 group.add(tile);
+                // 首次打造展示实际获得的模型，随地贴迁移和隐藏。
+                let bowDisplay = null;
+                if (id === "forge") {
+                    bowDisplay = createBowModel();
+                    styleBowModel(bowDisplay,Math.min(3,weaponLevel+1));
+                    bowDisplay.position.set(0, 1.55, -0.45);
+                    bowDisplay.rotation.set(-0.35, Math.PI / 2, -0.35);
+                    bowDisplay.scale.setScalar(1.8);
+                    group.add(bowDisplay);
+                }
 
                 const zone = {
                     id,
@@ -5058,6 +5703,8 @@
                     group,
                     base,
                     tile,
+                    bowDisplay,
+                    equipmentLevel: id === "forge" ? weaponLevel+1 : 0,
                     tileCanvas: canvas,
                     tileContext: context,
                     tileTexture: texture,
@@ -5182,11 +5829,14 @@
             }
 
             function resetZone(zone, cost) {
+                zone.remoteBudget = 0;
                 zone.paid = 0;
                 zone.cost = cost;
                 zone.complete = false;
                 zone.paymentTimer = 0;
-                zone.requiresReentry = true;
+                zone.requiresReentry = isPlayerInsideZonePosition(zone.position);
+                zone.hintShown = false;
+                zone.lastHint = null;
                 drawTile(zone, false);
             }
 
@@ -5227,6 +5877,8 @@
             function completeCityUpgrade() {
                 const stage = CITY_STAGES[cityLevel];
                 cityLevel += 1;
+                if (cityLevel === 2) unlockLowShards();
+                if (cityLevel === 3 && !pet) { showTile("hatchery"); ensureEggAvailability(); }
                 buildCityStage(cityLevel);
                 playSound("upgrade");
                 // 这一级城解锁的设施，同时也是下一级城的门。武器线被 ?arpg=0 关掉时
@@ -5234,8 +5886,8 @@
                 const unlock = stage && stage.unlock;
                 const gated = unlock && (unlock !== "forge" || weaponEnabled());
                 if (gated) {
-                    showTile(unlock);
-                    toast(unlockCopy(unlock));
+                    if (unlock !== "hatchery" || !pet) showTile(unlock);
+                    toast(C_BLOCKS ? (LANG === "en" ? `${C_DISTRICTS[cityLevel-1].en} BUILT` : `${C_DISTRICTS[cityLevel-1].name}建成`) : unlockCopy(unlock));
                     if (unlock === "hatchery") ensureEggAvailability();
                 } else {
                     toast(t("主城升级到 Lv.{n}", { n: cityLevel }));
@@ -5245,11 +5897,13 @@
                     if (cityLevel >= CITY_STAGES.length) removeZone(zone);
                     else {
                         resetZone(zone, resolveTileCost("city-upgrade"));
-                        // 孵化台是最后一级城解锁的，它后面没有城了，不用设门。
+                        // 免费孵化从城 Lv3 常驻，不占用扩城的付款门。
                         cityGate = gated && unlock !== "hatchery" ? unlock : null;
                         if (cityGate) zone.group.visible = false;
                     }
                 }
+                // 城级解锁当帧刷新工坊；不能等 watchdog 再出现，误把已经走进入口的玩家锁住。
+                if (C_BLOCKS) syncForgeWindow();
                 updateUI();
             }
 
@@ -5284,11 +5938,11 @@
             // 默认躺在 x-y 平面（法线朝 z），直接用会让箭从弓的侧面飞出去。
             // 所以套一层 bowFrame 转 -90°：它把 frame 内的 +x 映射到世界 +z。
             // frame 里一律按「+x 是前方」写，弓背鼓向 +x，弓弦落在 -x 那侧（靠着射手）。
-            function createPlayerBow() {
-                playerBow = new THREE.Group();
+            function createBowModel() {
+                const model = new THREE.Group();
                 const frame = new THREE.Group();
                 frame.rotation.y = -Math.PI / 2;
-                playerBow.add(frame);
+                model.add(frame);
 
                 const arc = Math.PI * 1.06;
                 // 弓臂用暖木色而不是写实的深棕。俯视镜头下玩家本体只有八十来像素，弓横过来
@@ -5336,24 +5990,29 @@
                 nock.position.x = stringX;
                 frame.add(nock);
 
-                playerBow.position.set(BOW_REST.x, BOW_REST.y, BOW_REST.z);
+                model.position.set(BOW_REST.x, BOW_REST.y, BOW_REST.z);
                 // 把弓面从竖直压向水平。真人射箭是竖着端弓的，但这是俯视镜头：竖着端时
                 // 弓臂几乎正对相机，那道弧被压成一条竖线，实测截图里只看得出「手里有个东西」，
                 // 读不出是弓。压到 63° 之后整道弧摊开朝着相机，弓形一眼就认得出。
                 //
-                // 绕的是 playerBow 的局部 z 轴，也就是箭的飞行方向——所以只改弓面的倾角，
+                // 绕的是 model 的局部 z 轴，也就是箭的飞行方向——所以只改弓面的倾角，
                 // 不动瞄准方向（arrowDir 仍然等于 playerFacing，见 __wik.bow()）。
                 //
                 // 取 72° 而不是压到 90° 全平：全平时弓面法线朝正上，相机俯角 52.6°，
                 // 弓形按 cos(52.6°) ≈ 0.61 收缩；留 18° 让法线偏向相机那侧，
                 // 玩家转身时最好能到接近正对，最差也不比全平差多少。
-                playerBow.rotation.z = -1.25;
-                playerBow.userData = {
+                model.rotation.z = -1.25;
+                model.userData = {
                     frame, limb, string, nock, tip,
                     stringX,
                     // 分级特效挂上去的那些件，按需创建（见 applyWeaponAppearance）。
                     glow: null
                 };
+                return model;
+            }
+
+            function createPlayerBow() {
+                playerBow = createBowModel();
                 playerBow.visible = false;
                 playerVisual.add(playerBow);
                 // 弓永远压在玩家自己身上画。走的是这个工程里既有的那套办法（守卫的剪影和
@@ -5397,6 +6056,11 @@
                 if (bowDraw > 0) bowDraw = Math.max(0, bowDraw - dt * 3.6);
                 if (!playerBow || !playerBow.visible) return;
                 const data = playerBow.userData;
+                if (heldItem !== "bow") {
+                    data.string.position.x = data.stringX;
+                    data.nock.visible = false;
+                    return;
+                }
                 const pull = (1 - bowDraw) * 0.19;
                 data.string.position.x = data.stringX - pull;
                 data.nock.position.x = data.stringX - pull;
@@ -5434,18 +6098,103 @@
                 const bow = kind === "bow" && bowUnlocked() && playerBow;
                 heldItem = bow ? "bow" : "pick";
                 if (playerWeapon) playerWeapon.visible = !bow;
-                if (playerBow) playerBow.visible = Boolean(bow);
+                if (playerBow) {
+                    playerBow.visible = bowUnlocked();
+                    if (bow) {
+                        playerBow.position.set(BOW_REST.x, BOW_REST.y, BOW_REST.z - bowDraw * 0.12);
+                        playerBow.rotation.set(0, 0, -1.25, "XYZ");
+                        playerBow.scale.setScalar(1);
+                    } else {
+                        playerBow.position.set(-0.48, 1.55, -0.62);
+                        playerBow.rotation.set(0, Math.PI / 2, -0.55, "ZYX");
+                        playerBow.scale.setScalar(1.2);
+                    }
+                }
+            }
+
+            function disposeEquipment(model) {
+                model.traverse(o=>{if(o.isMesh){
+                    if(o.geometry!==shared.box && o.geometry!==shared.sphere)o.geometry.dispose();
+                    o.material.dispose();
+                }});
+            }
+
+            function stylePickaxe(model, level) {
+                const style=PICK_STYLES[level-1],head=model.userData.head;
+                head.scale.set(.78+(level-1)*.25,.22+(level-1)*.06,.26+(level-1)*.04);
+                head.material.color.setHex(style.color);head.material.emissive.setHex(style.glow);
+                head.material.emissiveIntensity=level===1 ? .12 : .6;
+                if(model.userData.trim){model.remove(model.userData.trim);disposeEquipment(model.userData.trim);}
+                const trim=new THREE.Group();model.add(trim);model.userData.trim=trim;
+                const add=(geometry,color,x,y,z)=>{
+                    const m=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,emissive:style.glow,emissiveIntensity:.25,metalness:.5,roughness:.35}));
+                    m.position.set(x,y,z);trim.add(m);return m;
+                };
+                if(level>=2){
+                    add(new THREE.OctahedronGeometry(.19+(level-2)*.045),style.color,.15,.88,.22);
+                    for(const y of [.1,.48])add(new THREE.CylinderGeometry(.1,.1,.1,6),0xd4ad64,0,y,0);
+                }
+                if(level>=3)for(const side of [-1,1]){
+                    const blade=add(new THREE.ConeGeometry(.22, .52,4),style.color,.15+side*.66,.87,0);
+                    blade.rotation.z=-side*Math.PI/2;
+                }
+                if(level===4){
+                    const crest=add(new THREE.BoxGeometry(.23,.25,.38),0xffd276,.15,1.12,0);crest.rotation.z=.2;
+                    for(const side of [-1,1])add(new THREE.OctahedronGeometry(.16),0xfff0b0,.15+side*.45,1.09,0);
+                }
+            }
+
+            function createPickModel(level) {
+                const model=new THREE.Group();
+                const handle=new THREE.Mesh(new THREE.CylinderGeometry(.065,.08,1.35,8),new THREE.MeshStandardMaterial({color:0x77503b}));
+                handle.position.y=.24;model.add(handle);
+                const head=new THREE.Mesh(shared.box,new THREE.MeshStandardMaterial({color:0xffffff}));
+                head.position.set(.15,.86,0);head.rotation.z=-.2;model.add(head);
+                model.userData={head,handle};stylePickaxe(model,level);return model;
+            }
+
+            function styleBowModel(model, level) {
+                const data=model.userData;
+                if(data.styleLevel===level)return;data.styleLevel=level;
+                data.limb.scale.setScalar(level>=3 ? 1.18 : 1);
+                data.limb.material.color.setHex(level>=3 ? 0xe3b767 : 0xd39a56);
+                if(data.armor){data.frame.remove(data.armor);disposeEquipment(data.armor);}
+                const armor=new THREE.Group();data.frame.add(armor);data.armor=armor;
+                if(level>=3){
+                    for(const side of [-1,1]){
+                        const wing=new THREE.Mesh(new THREE.ConeGeometry(.16,.48,4),new THREE.MeshStandardMaterial({color:0xffc35b,emissive:0xb94c17,emissiveIntensity:.5,metalness:.65}));
+                        wing.position.set(.08,side*.57,0);wing.rotation.z=side>0 ? -.5 : Math.PI+.5;armor.add(wing);
+                    }
+                    const core=new THREE.Mesh(new THREE.OctahedronGeometry(.14),new THREE.MeshBasicMaterial({color:0xffde93}));
+                    core.position.set(BOW_RADIUS,0,0);armor.add(core);
+                }
+                data.string.material.color.setHex(level>=3 ? 0xffba55 : 0xd9d2c4);
+                data.tip.material.color.setHex(level>=3 ? 0xffa23c : 0xbfe9ff);
+            }
+
+            function pickFractureLines(at, color, level) {
+                const group=new THREE.Group();group.position.copy(at).setY(.16);
+                for(const offset of [-.6,0,.6]) {
+                    const angle=player.rotation.y+offset,length=level===4 ? 2.5 : 1.7;
+                    const mesh=new THREE.Mesh(new THREE.BoxGeometry(.055,.02,length),new THREE.MeshBasicMaterial({color,transparent:true,depthWrite:false}));
+                    mesh.rotation.y=angle;mesh.position.set(Math.sin(angle)*length/2,0,Math.cos(angle)*length/2);
+                    mesh.userData.opacity=.7;group.add(mesh);
+                }
+                scene.add(group);effects.push({type:"chainBolt",mesh:group,life:.25,maxLife:.25});
+            }
+
+            function showEquipmentUpgrade(kind, level) {
+                firstUpgradeStrike[kind]=true;equipmentShowTimer=.55;
+                const model=kind==="pick" ? createPickModel(level) : createBowModel();
+                if(kind==="bow"){styleBowModel(model,level);model.rotation.set(-.35,Math.PI/2,-.35);}
+                else model.rotation.z=-.55;
+                model.position.copy(player.position).add(new THREE.Vector3(0,3.4,0));model.scale.setScalar(1.5);
+                scene.add(model);effects.push({type:"equipmentReveal",mesh:model,life:.65,maxLife:.65});
             }
 
             function applyPickaxeAppearance() {
-                const tier = pickaxeTier(pickaxeLevel);
-                const head = playerWeapon.userData.head;
-                // Lv1 保持初始体积，升级后才随等级变大。
-                const grow = pickaxeLevel > 1 ? pickaxeLevel : 0;
-                head.scale.set(0.72 + grow * 0.13, 0.2 + grow * 0.04, 0.24 + grow * 0.05);
-                head.material.color.setHex(tier.color);
-                head.material.emissive.setHex(tier.emissive);
-                return tier;
+                stylePickaxe(playerWeapon,pickaxeLevel);
+                return pickaxeTier(pickaxeLevel);
             }
 
             function completePickaxe() {
@@ -5458,6 +6207,7 @@
                 const prevLevel = PICKAXE_LEVELS[pickaxeLevel - 2];
                 power += level.power_score - (prevLevel ? prevLevel.power_score : 0);
                 const tier = applyPickaxeAppearance();
+                showEquipmentUpgrade("pick",pickaxeLevel);
                 buildPopEffect(player.position.clone().add(new THREE.Vector3(0.7, 1.4, 0)), 22, tier.glow);
                 playSound("upgrade");
                 const zone = zones.find(item => item.id === "pickaxe");
@@ -5468,17 +6218,14 @@
                         resetZone(zone, nextCost);
                         // 买到倒数第二级时这一步会把贴挪到封印走廊——最后一级不解锁矿层，
                         // 没有理由再把玩家从矿脉深处叫回城里一趟。
-                        moveZone(zone, tileSlot("pickaxe"));
+                        if (!C_BLOCKS || cityLevel < 4) moveZone(zone, tileSlot("pickaxe"));
                     }
                 }
                 releaseCityGate("pickaxe");
                 updateUI();
                 // 满级按预设能买到第几级判，不能写死 3：A 版封顶三级、宝石版四级，
                 // 写死的话宝石版买到 Lv3 就会报「已满级」，而地贴上明明还挂着下一档。
-                const maxed = pickaxeLevel > (ECON.pickaxeCost ? ECON.pickaxeCost.length : 0);
-                toast(maxed
-                    ? t("锄头已满级，{ore}也能快速开采", { ore: tier.name })
-                    : t("锄头升级，现在能凿开{ore}了", { ore: tier.name }));
+                toast(["", "翠晶强化镐：解锁中级矿，挥镐更快", "紫晶重型镐：解锁高级矿，一次砸开更多矿柱", "熔金能量镐：高级矿开采提速，重击大片碎裂"][pickaxeLevel-1]);
                 defer(1.5, spawnSweepCharge);
             }
 
@@ -5505,8 +6252,8 @@
                 if (!weaponEnabled()) return false;
                 if (weaponLevel >= WEAPON_LEVELS.length) return false;
                 // Lv1→Lv2 是第一个窗口，城 Lv2 一亮就开着。
-                // Lv2→Lv3 要等破壳：宠物线排在前面。
-                return weaponLevel === 1 || Boolean(pet);
+                // Lv2→Lv3 只看城 Lv4，免费孵化提前也不会提前放出武器升级。
+                return weaponLevel === 1 || cityLevel >= 4;
             }
 
             function syncForgeWindow() {
@@ -5536,6 +6283,7 @@
             function gainGems(amount) {
                 if (!(amount > 0)) return;
                 gems += amount;
+                ui.gemHud.classList.add("revealed");
             }
 
             function completeWeapon() {
@@ -5544,6 +6292,7 @@
                 const prevTier = WEAPON_LEVELS[weaponLevel - 2];
                 power += tier.power_score - (prevTier ? prevTier.power_score : 0);
                 applyWeaponAppearance();
+                showEquipmentUpgrade("bow",weaponLevel);
                 buildPopEffect(player.position.clone().add(new THREE.Vector3(0.7, 1.4, 0)), 22, 0xff7a2a);
                 playSound("upgrade");
                 const zone = zones.find(item => item.id === "forge");
@@ -5559,7 +6308,7 @@
                 releaseCityGate("forge");
                 // 武器满级 = 宠物线的最后一步可以开始了。进化台原先挂在主城 Lv4 上，
                 // 那个位置让给孵化台之后，改由这儿放出——单轨的最后一棒。
-                if (weaponLevel >= WEAPON_LEVELS.length && pet && !petEvolved) showTile("evolve");
+                showEvolveWhenReachable();
                 updateUI();
                 // 报出这一级买到的附加，不报伤害数字。伤害只在打中时闪一下就没了，
                 // 玩家记不住 425 和 805 的区别；「够得更远」「一下打两只」是他能在
@@ -5568,10 +6317,11 @@
                 // Lv2 单独说一句：那一级给的不是加成，是**弓本身**（见 bowUnlocked）。
                 // 它是这条线唯一一次「手上多了一件东西」，混在「附魔完成」里就读没了。
                 if (weaponLevel === 2) {
-                    toast("弓箭打造完成！现在可以远程射杀守卫了");
+                    setHeldItem("pick");
+                    toast("获得弓箭！已背在背上，遇到野怪自动举弓射击");
                     return;
                 }
-                const gained = weaponLevel === 3 ? t("三连击最后一下会炸开，溅到旁边的怪")
+                const gained = weaponLevel === 3 ? t("射速提升，第三箭爆炸，清理成群野怪")
                     : t("威力再上一档");
                 const maxed = weaponLevel >= WEAPON_LEVELS.length;
                 toast(maxed ? t("弓箭强化满级，{gained}", { gained }) : t("弓箭强化完成，{gained}", { gained }));
@@ -5586,6 +6336,8 @@
             // （见 applyPickaxeAppearance），归挖矿线，不该被战斗线的成长盖掉。
             function applyWeaponAppearance() {
                 if (!playerBow) return;
+                styleBowModel(playerBow,weaponLevel);
+                bowMeshes(playerBow).forEach(m=>{m.material.depthTest=false;m.renderOrder=6;});
                 const data = playerBow.userData;
                 const level = weaponEnabled() ? weaponLevel : 1;
                 const color = weaponArcColor();
@@ -5641,6 +6393,18 @@
                 return 0xffa23c;
             }
 
+            function showEvolveWhenReachable() {
+                // 地贴位于封印前走廊：高级矿凿穿后再解锁，避免把尚未到达的区域当成当前任务。
+                if (pet && !petEvolved && breachedByTier.high > 0 &&
+                    (!weaponEnabled() || weaponLevel >= WEAPON_LEVELS.length)) {
+                    if(C_BLOCKS && !blockState.evolveSlot) {
+                        const spot=findClearSpot(player.position.clone().add(new THREE.Vector3(0,0,-1.5)),2.1);
+                        blockState.evolveSlot={x:spot.x,z:spot.z};
+                    }
+                    showTile("evolve");
+                }
+            }
+
             function completeEvolve() {
                 const zone = zones.find(item => item.id === "evolve");
                 if (zone) removeZone(zone);
@@ -5660,8 +6424,21 @@
             function maybeShowSealOffering() {
                 if (!ECON.sealOffering || finaleStarted) return;
                 if (!petEvolved) return;
+                // 先让末波战斗读清楚，再亮出献祭目标；金币不足时引导仍会返回矿区。
+                if (!finalWave.spawned || finalWave.killed < finalWave.count) return;
                 if (sealOffered) return;
                 sealOffered = true;
+                if (VERSION === "a") {
+                    ensureUltimateCharge();
+                    ultimateCharge.locked = false;
+                    ultimateCharge.lock.visible = false;
+                    ultimateCharge.body.material.color.setHex(0x972d35);
+                    ultimateCharge.track.material.color.setHex(0xffb03c);
+                    markRun("ultimate-unlocked");
+                    toast("终极炸药桶已就绪，踩入光圈引爆封印");
+                    playSound("warn");
+                    return;
+                }
                 showTile("seal");
                 toast("巨龙已进化，把金币砸进封印");
                 playSound("warn");
@@ -5712,6 +6489,7 @@
 
             function isZonePayable(zone) {
                 if (zone.complete) return false;
+                if (C_BLOCKS && zone.id === "city-upgrade") return cityLevel>0 && cityLevel<4 && !cityGate;
                 if (zone.id === "hatchery") return carryingEgg;
                 if (zone.id === "evolve") return Boolean(pet) && !petEvolved;
                 // 献祭点的两个前置在 maybeShowSealOffering 里已经判过了——它只在条件齐了
@@ -5729,30 +6507,42 @@
 
             function updateZones(dt) {
                 for (const zone of zones) {
-                    if (!zone.group.visible) continue;
-                    const inside = isPlayerInsideZonePosition(zone.position);
-                    if (zone.requiresReentry) {
-                        if (!inside) zone.requiresReentry = false;
-                        else continue;
+                    if (zone.id === "forge" || zone.id === "pickaxe") {
+                        const next=zone.id==="forge" ? Math.min(3,weaponLevel+1) : Math.min(4,pickaxeLevel+1);
+                        if(zone.equipmentLevel!==next){
+                            if(zone.bowDisplay){zone.group.remove(zone.bowDisplay);disposeEquipment(zone.bowDisplay);}
+                            const model=zone.id==="forge" ? createBowModel() : createPickModel(next);
+                            if(zone.id==="forge")styleBowModel(model,next);
+                            model.rotation.set(-.35,zone.id==="forge" ? Math.PI/2 : 0,-.35);
+                            model.scale.setScalar(1.4);zone.bowDisplay=model;zone.group.add(model);zone.equipmentLevel=next;
+                        }
+                        zone.bowDisplay.visible=!zone.complete;
+                        zone.bowDisplay.position.set(0,1.6+Math.sin(zone.pulse*2)*.1,-.65);
                     }
+                    if (!zone.group.visible) continue;
+                    const remote=C_BLOCKS && zone.id==="city-upgrade" && zone.remoteBudget>0;
+                    const inside = isPlayerInsideZonePosition(zone.position) || remote;
+                    if (zone.requiresReentry && !inside) zone.requiresReentry = false;
                     if (zone.complete) continue;
                     // 走开就把提示解锁。原先只在「这一帧能付款」时才重置，于是钱不够的地贴
                     // 一辈子只说一次话——而这一版恰恰要它反复说：玩家踩上锄头地贴、发现买不起、
                     // 去打了一只怪、钱还是不够，回来时最需要的就是再听一遍「还差几颗」。
-                    if (!inside) zone.hintShown = false;
+                    if (!inside) { zone.hintShown = false; zone.lastHint = null; }
 
                     const currency = tileCurrency(zone.id);
                     const grade = tileShardGrade(zone.id);
                     const wallet = walletOf(currency, grade);
                     const payable = isZonePayable(zone);
                     const remaining = Math.max(0, zone.cost - zone.paid);
-                    const ready = payable && wallet > 0;
+                    const ready = payable && !zone.requiresReentry && (remaining === 0 || wallet > 0);
+                    const status = zoneStatus(zone);
                     zone.pulse += dt;
                     const pulse = ready ? 0.9 + Math.sin(zone.pulse * CONFIG.zonePulseSpeed) * 0.1 : 0.72;
                     zone.tile.material.opacity = pulse;
                     zone.base.material.opacity = ready ? 0.62 : 0.45;
-                    if (zone.lastReady !== ready) {
+                    if (zone.lastReady !== ready || zone.lastStatus !== status) {
                         zone.lastReady = ready;
+                        zone.lastStatus = status;
                         drawTile(zone, ready);
                     }
 
@@ -5762,26 +6552,27 @@
                     // 永远付不完的地贴里。那个担心站不住：捐进去的每一颗都是在给同一笔消费攒钱，
                     // 和揣在兜里是同一个局面，压不住任何东西。真正保证供给的是数量本身
                     // 和缺钱时改指来源的箭头，不是这条规则。
-                    const short = wallet < remaining ? remaining - wallet : 0;
-                    const scarce = short > 0 && (currency === "gem" || currency === "shard");
-                    if (!inside || !payable || wallet <= 0 || ctaOpen || cinematic.active) {
+                    if (!inside || !payable || zone.requiresReentry || (remaining > 0 && wallet <= 0) || ctaOpen || cinematic.active) {
                         zone.paymentTimer = 0;
                         // 先收下他带来的，掏空了地贴还没满，这时才说「还差几颗」。
-                        if (inside && !zone.hintShown && (!payable || scarce)) {
+                        const hint = zonePaymentHint(zone);
+                        if (inside && !ctaOpen && !cinematic.active && zone.lastHint !== hint) {
                             zone.hintShown = true;
-                            if (!scarce) toast(zoneBlockedCopy(zone.id));
-                            else toast(currency === "shard" ? shardShortCopy(short, grade) : gemShortCopy(short));
+                            zone.lastHint = hint;
+                            toast(hint);
                         }
                         continue;
                     }
                     zone.hintShown = false;
+                    zone.lastHint = null;
 
                     zone.paymentTimer -= dt;
                     if (zone.paymentTimer > 0) continue;
                     zone.paymentTimer = CONFIG.zonePaymentInterval;
                     // 每次扣的枚数跟着剩余金额走，贵的地贴也能在一秒多付完，不然后期光付款就要等七八秒。
                     const step = Math.max(1, Math.ceil(remaining / CONFIG.zonePaymentTicks));
-                    const amount = Math.min(step, wallet, remaining);
+                    const amount = Math.min(step, wallet, remaining,remote?zone.remoteBudget:Infinity);
+                    if(remote)zone.remoteBudget-=amount;
                     if (currency === "gem") {
                         gems -= amount;
                     } else if (currency === "shard") {
@@ -5791,7 +6582,7 @@
                         syncBackCoins();
                     }
                     zone.paid += amount;
-                    flyCoinTo(zone.position, currency, grade);
+                    if (amount > 0) flyCoinTo(zone.position, currency, grade);
                     updateUI();
                     zone.paymentTick = (zone.paymentTick || 0) + 1;
                     if (zone.paymentTick % 2 === 0) playSound("coin");
@@ -5799,6 +6590,7 @@
 
                     if (zone.paid >= zone.cost) {
                         zone.complete = true;
+                        if(C_BLOCKS && zone.id==="city-upgrade")blastBlockPlot(cityLevel);
                         buildPopEffect(zone.position.clone().add(new THREE.Vector3(0, 0.5, 0)), 22, 0xffda4c);
                         const callback = zone.onComplete;
                         defer(0.14, callback);
@@ -5834,11 +6626,44 @@
             }
 
             function zoneBlockedCopy(id) {
+                if (C_BLOCKS && id === "city-upgrade") {
+                    if (cityGate) return LANG === "en" ? "Complete the highlighted workshop upgrade first" : "先完成箭头指向的工坊升级";
+                }
                 if (id === "hatchery") return "先去野外找到龙蛋，抱回来孵化";
                 if (id === "evolve") return "先孵化出宠物才能进化";
                 if (id === "pickaxe") return "先扩建主城，才能解锁下一级锄头";
                 if (id === "city-upgrade") return "先升级锄头凿开下一层矿，再扩建主城";
                 return "";
+            }
+
+            function zoneStatus(zone) {
+                if (zone.complete) return LANG === "en" ? "COMPLETE" : "已完成";
+                if (zone.requiresReentry) return LANG === "en" ? "STEP OFF & RETURN" : "离开后再进入";
+                if (C_BLOCKS && zone.id === "city-upgrade") {
+                    return "可提前捐献 · 付满爆破";
+                }
+                if (!isZonePayable(zone)) return zone.id === "hatchery" ? (LANG === "en" ? "BRING THE EGG" : "先带回龙蛋") : (LANG === "en" ? "UPGRADE REQUIRED" : "先完成前置升级");
+                const left = zone.cost - zone.paid;
+                if (left && !walletOf(tileCurrency(zone.id), tileShardGrade(zone.id))) return LANG === "en" ? "COLLECT TO CONTINUE" : "收集资源后继续支付";
+                return zone.cost === 0 ? (LANG === "en" ? "STAND HERE TO HATCH" : "站上即可免费孵化") : (LANG === "en" ? "STAND HERE TO PAY" : "站上即可支付");
+            }
+
+            function zonePaymentHint(zone) {
+                if (zone.requiresReentry) return LANG === "en" ? "Step off, then return for the next upgrade" : "离开地贴后重新进入，即可进行下一次升级";
+                if (!isZonePayable(zone)) return t(zoneBlockedCopy(zone.id));
+                const currency=tileCurrency(zone.id), grade=tileShardGrade(zone.id);
+                const short=Math.max(0,zone.cost-zone.paid-walletOf(currency,grade));
+                if (short && !walletOf(currency,grade)) {
+                    if(currency === "shard") return shardShortCopy(short,grade);
+                    if(currency === "gem") return gemShortCopy(short);
+                    return LANG === "en" ? `Need ${short} more coins — mine to collect` : `还差 ${short} 金币，采矿后回来继续支付`;
+                }
+                return `${zoneStatus(zone)} · ${zone.paid}/${zone.cost}`;
+            }
+            function updateTileHint() {
+                const zone=C_BLOCKS && !cinematic.active && !ctaOpen && zones.find(z=>z.group.visible && !z.complete && isPlayerInsideZonePosition(z.position));
+                ui.tileHint.hidden=!zone;
+                if(zone) { const hint=zonePaymentHint(zone);if(ui.tileHint.textContent!==hint)ui.tileHint.textContent=hint; }
             }
 
             function createOreField() {
@@ -5859,7 +6684,7 @@
                         // 两样都没有，照搬 0.46 只会让它读成「又一层能看穿的矿脉」——玩家凭什么
                         // 觉得这道墙和前三道不一样。压实之后它才是堵死的岩壁。
                         // 终局那几段不受影响：巨龙的封印剪影走自己的渲染顺序压在墙上，不靠矿体透光。
-                        opacity: tier.sealed ? 0.94 : 0.46
+                        opacity: tier.sealed ? 0.94 : HIDE_GUARDS ? 1 : 0.46
                     });
                     shared.chunkMaterials[tierId] = new THREE.MeshStandardMaterial({
                         color: tier.chunkColor,
@@ -5869,7 +6694,11 @@
                     });
                 }
 
-                for (const tierId of TIER_ORDER) createOreRing(tierId);
+                if (C_BLOCKS) {
+                    createOreRing("low", { radius: 15, count: 1, offset: 0 });
+                    createOreRing("low", { radius: 23, count: 1, offset: 1 });
+                    for (const id of ["mid", "high", SEALED_TIER]) createOreRing(id);
+                } else for (const tierId of TIER_ORDER) createOreRing(tierId);
                 createDeepVeins();
                 spawnRovers();
             }
@@ -6066,12 +6895,17 @@
 
             // 整个扇形共用一套极坐标格网：切向格数 = 扇形弧长 / 目标格宽，再取整到段数的整数倍。
             // 段边界因此正好落在格边界上，几段拼起来就是一道没有缝的扇形矿墙。
-            function createOreRing(tierId) {
+            function createOreRing(tierId, block = null) {
                 const tier = ORE_TIERS[tierId];
                 const { radial, rows } = tier.grid;
-                const arcLength = SECTOR.span * tier.ringRadius;
-                const perSegment = Math.max(4, Math.round(arcLength / tier.segmentCount / tier.cellArc));
-                const arcCells = perSegment * tier.segmentCount;
+                const centerRadius = block ? block.radius : tier.ringRadius;
+                const count = block ? block.count : tier.segmentCount;
+                const span = C_BLOCKS ? 2 * Math.asin(6.8 / (centerRadius - tier.ringThickness / 2)) : SECTOR.span;
+                const originalRadius = { low: 18.5, mid: 27.5, high: 37.5, sealed: 45.2 };
+                // 保留 A/B 的每段矿格数与资源总量，只压缩空间宽度；不靠 watchdog 补钱。
+                const arcLength = C_BLOCKS ? (Math.PI / 2 * originalRadius[tierId] / tier.segmentCount * count) : SECTOR.span * tier.ringRadius;
+                const perSegment = Math.max(4, Math.round(arcLength / count / tier.cellArc)) + (C_BLOCKS && tierId === "mid" ? 4 : 0);
+                const arcCells = perSegment * count;
 
                 const ring = {
                     tierId,
@@ -6087,12 +6921,14 @@
                     // 这一项现在只剩碰撞这一个作用：巨龙那套按格崩塌（eruptOreChunks）
                     // 打掉上层时，墙不该因此就能走过去。
                     groundLayers: Math.max(1, Math.ceil(rows / 2)),
-                    cellAngle: SECTOR.span / arcCells,
+                    angleStart: C_BLOCKS ? SECTOR.center - span / 2 : SECTOR.start,
+                    nodeOffset: block ? block.offset : 0,
+                    cellAngle: span / arcCells,
                     cellDepth: tier.ringThickness / radial,
                     cellHeight: tier.ringHeight / rows,
-                    innerRadius: tier.ringRadius - tier.ringThickness / 2,
-                    outerRadius: tier.ringRadius + tier.ringThickness / 2,
-                    centerRadius: tier.ringRadius,
+                    innerRadius: centerRadius - tier.ringThickness / 2,
+                    outerRadius: centerRadius + tier.ringThickness / 2,
+                    centerRadius,
                     columns: [],
                     total: 0,
                     remaining: 0
@@ -6101,7 +6937,7 @@
                 ring.maxCellSpan = Math.max(ring.outerRadius * ring.cellAngle, ring.cellDepth);
                 oreRings.push(ring);
 
-                for (let index = 0; index < tier.segmentCount; index++) createOreNode(ring, index);
+                for (let index = 0; index < count; index++) createOreNode(ring, index + ring.nodeOffset);
                 return ring;
             }
 
@@ -6109,8 +6945,8 @@
                 const tier = ring.tier;
                 const tierId = ring.tierId;
                 const rand = seededRandom(1013 + index * 137 + TIER_ORDER.indexOf(tierId) * 911);
-                const arcStart = index * ring.perSegment;
-                const angleStart = SECTOR.start + arcStart * ring.cellAngle;
+                const arcStart = (index - ring.nodeOffset) * ring.perSegment;
+                const angleStart = ring.angleStart + arcStart * ring.cellAngle;
                 const angleCenter = angleStart + (ring.perSegment * ring.cellAngle) / 2;
                 const cosCenter = Math.cos(angleCenter);
                 const sinCenter = Math.sin(angleCenter);
@@ -6129,7 +6965,7 @@
                 const columns = [];
                 for (let a = 0; a < ring.perSegment; a++) {
                     const ai = arcStart + a;
-                    const angle = SECTOR.start + (ai + 0.5) * ring.cellAngle;
+                    const angle = ring.angleStart + (ai + 0.5) * ring.cellAngle;
                     const cosA = Math.cos(angle);
                     const sinA = Math.sin(angle);
                     // 顶面沿扇形连绵起伏、且外圈比内圈高，站在城里看就是一道向外抬升的矿脊。
@@ -6248,7 +7084,7 @@
                     coin.scale.setScalar(1.25);
                     coin.position.set(cell.x, Math.max(ring.cellHeight * 0.6, cell.y), cell.z);
                     coin.rotation.set(Math.PI / 2, 0, rand() * Math.PI);
-                    coin.renderOrder = 1;
+                    coin.renderOrder = HIDE_GUARDS ? 4 : 1;
                     group.add(coin);
                     // 记在所属体素上：凿掉这一格时这枚金币就地掉出来，而不是按整段进度凭空消失。
                     (cell.coins || (cell.coins = [])).push(coin);
@@ -6281,6 +7117,7 @@
             // 而「一环产多少」正是「正好够买一次锄头」这条设计的唯一抓手，不能被舍入吃掉。
             function embedShards(node, cells, group, rand, index) {
                 const tier = node.tier;
+                if (tier.id === "low" && cityLevel < 2) { node.shardsPending = index; return; }
                 const total = tier.shardYield || 0;
                 if (!total || tier.sealed || !ECON.shards) return;
                 const segments = Math.max(1, tier.segmentCount);
@@ -6289,8 +7126,13 @@
 
                 // 只埋在挡人的格子里。上面那几层挖空后要留在原地当洞顶，埋在洞顶上的宝石
                 // 玩家看得见、挖不到，是纯粹的挑衅。
-                const pool = cells.filter(cell => cell.blocking);
-                if (!pool.length) return;
+                const pool = cells.filter(cell => cell.blocking && !cell.removed &&
+                    (!C_BLOCKS || blockNodeLevel(node) >= 4 || blockColumnRequired(cell.column)));
+                if (!pool.length) {
+                    // 玩家可在建城前清空整段；延迟产量不能因此被吞掉。
+                    dropCoins(node.position, count, { kind: "shard", grade: tier.id });
+                    return;
+                }
 
                 // 沿切向均匀铺开：候选格按弧向排序后切成 count 份，每份里随机抽一格。
                 // 纯随机撒不行——「挖了七成却一颗没碰到」和「挖了两成全捡了」都可能发生，
@@ -6311,11 +7153,11 @@
                     crystal.rotation.y = rand() * Math.PI;
                     const core = new THREE.Mesh(shared.shard, shared.oreShardMats[tier.id]);
                     core.scale.set(size, size * 1.5, size);
-                    core.renderOrder = 1;
+                    core.renderOrder = HIDE_GUARDS ? 4 : 1;
                     crystal.add(core);
                     const halo = new THREE.Mesh(shared.shard, shared.shardHaloMats[tier.id]);
                     halo.scale.set(size * 1.9, size * 2.6, size * 1.9);
-                    halo.renderOrder = 1;
+                    halo.renderOrder = HIDE_GUARDS ? 5 : 1;
                     crystal.add(halo);
                     group.add(crystal);
 
@@ -6323,6 +7165,13 @@
                     cell.shard = { mesh: crystal, grade: tier.id, taken: false };
                     node.shards.push(cell.shard);
                     oreShards.push(cell.shard);
+                }
+            }
+
+            function unlockLowShards() {
+                for (const node of oreNodes.filter(n => n.shardsPending !== undefined)) {
+                    embedShards(node, node.cells, node.group, seededRandom(9200 + node.shardsPending), node.shardsPending);
+                    delete node.shardsPending;
                 }
             }
 
@@ -6365,7 +7214,7 @@
                     const distance = Math.hypot(point.x, point.z);
                     const margin = reach + ring.maxCellSpan;
                     if (distance < ring.innerRadius - margin || distance > ring.outerRadius + margin) continue;
-                    const center = Math.floor((Math.atan2(point.z, point.x) - SECTOR.start) / ring.cellAngle);
+                    const center = Math.floor((Math.atan2(point.z, point.x) - ring.angleStart) / ring.cellAngle);
                     const spread = Math.ceil(margin / (ring.innerRadius * ring.cellAngle)) + 1;
                     for (let da = -spread; da <= spread; da++) {
                         for (let ri = 0; ri < ring.radialCells; ri++) {
@@ -6377,8 +7226,7 @@
             }
 
             function ringRemaining(tierId) {
-                const ring = oreRings.find(item => item.tierId === tierId);
-                return ring ? ring.remaining : 0;
+                return oreRings.filter(item => item.tierId === tierId).reduce((sum, ring) => sum + ring.remaining, 0);
             }
 
             // 挖掘点永远贴在玩家面前那格矿上，所以站着不动挖就会顺着朝向往外掏出一条隧道。
@@ -6412,10 +7260,12 @@
                         node.instanced.position.z = Math.sin(node.rejectShake * 58) * node.rejectShake * 0.5;
                     }
                     if (!node.monster || node.monsterRevealed) continue;
-                    const near = segmentDistance(node, player.position) < CONFIG.guardXrayRange;
+                    if (!C_BLOCKS) revealOreMonster(node);
+                    if (node.monsterRevealed) continue;
+                    const near = !opening.active && segmentDistance(node, player.position) < CONFIG.guardXrayRange;
                     if (node.monster.userData.xray === near) continue;
                     node.monster.userData.xray = near;
-                    setGuardXray(node.monster, near);
+                    setGuardXray(node.monster, near && !opening.active);
                 }
             }
 
@@ -6430,6 +7280,7 @@
             }
 
             function canMine(node) {
+                if (C_BLOCKS && blockNodeLevel(node) > cityLevel) return false;
                 return pickaxeLevel >= node.tier.requiredPickaxe && !guardBlocking(node);
             }
 
@@ -6529,23 +7380,21 @@
                     if (cell.blocking) cell.column.blockCount -= 1;
                     if (!touchedArcs.includes(cell.column.ai)) touchedArcs.push(cell.column.ai);
                     node.instanced.setMatrixAt(cellIndex, node.zeroMatrix);
-                    // 埋在这一格里的金币被凿出来，直接掉在挖开的位置上。
-                    if (cell.coins) {
-                        for (const coin of cell.coins) {
-                            if (!coin.visible) continue;
-                            coin.visible = false;
-                            dropCoins(coin.getWorldPosition(new THREE.Vector3()), 1);
-                        }
-                    }
-                    if (cell.shard) takeShard(cell.shard);
-                    if (i < 4) launchOreChunk(node, cell);
+                    releaseOreCellLoot(cell);
+                    if (i < 3 + pickaxeLevel * 2) launchOreChunk(node, cell);
                 }
                 node.instanced.instanceMatrix.needsUpdate = true;
 
-                buildDust(impact, 5, 0.7, node.tier.chunkColor);
-                buildPopEffect(impact, 5, node.tier.glow);
-                cameraShake = Math.max(cameraShake, 0.1);
-                playSound("crack");
+                oreBreakFeedback(node, impact);
+                const pickStyle = PICK_STYLES[pickaxeLevel-1];
+                if (pickaxeLevel>=2) buildPopEffect(impact,3+pickaxeLevel*2,pickStyle.glow);
+                if (pickaxeLevel>=3) pickFractureLines(impact,pickStyle.glow,pickaxeLevel);
+                if (pickaxeLevel>=3 || firstUpgradeStrike.pick) spawnSplashRing(impact, pickaxeLevel===4 ? 2.5 : 1.6, pickStyle.glow);
+                if (firstUpgradeStrike.pick) {
+                    buildPopEffect(impact,18,pickStyle.color);
+                    cameraShake=Math.max(cameraShake,.18);
+                    firstUpgradeStrike.pick=false;
+                }
 
                 // 一整段矿墙玩家不可能挖光，收益必须按凿掉的格数结算，挖多少拿多少。
                 const mined = node.total - node.remaining;
@@ -6553,7 +7402,7 @@
                 if (targetCoins > node.coinsReleased) {
                     const amount = targetCoins - node.coinsReleased;
                     node.coinsReleased = targetCoins;
-                    dropCoins(impact, amount);
+                    dropCoins(impact, amount, BALANCE.coinToss.mine);
                 }
 
                 // 剪影清晰度跟着隧道深度走：越往里凿，冻在墙心的守卫越显形。
@@ -6597,6 +7446,28 @@
                 checkFinaleTrigger();
             }
 
+            // 锄头与野怪技能共用破矿反馈和原地资源掉落。
+            function oreBreakFeedback(node, impact) {
+                buildDust(impact, 5, 0.7, node.tier.chunkColor);
+                buildPopEffect(impact, 5, node.tier.glow);
+                cameraShake = Math.max(cameraShake, 0.1);
+                playSound("crack");
+            }
+
+            function releaseOreCellLoot(cell, releaseCoins = true, monsterDamage = false) {
+                for (const coin of cell.coins || []) {
+                    if (releaseCoins && coin.visible) {
+                        dropCoins(coin.getWorldPosition(new THREE.Vector3()), 1, BALANCE.coinToss.mine);
+                        if (monsterDamage) enemyMining.coins++;
+                    }
+                    coin.visible = false;
+                }
+                if (cell.shard) {
+                    if (monsterDamage && !cell.shard.taken) enemyMining.shards++;
+                    takeShard(cell.shard);
+                }
+            }
+
             function launchOreChunk(node, cell) {
                 const mesh = new THREE.Mesh(shared.box, shared.chunkMaterials[node.tierId]);
                 mesh.scale.set(cell.width, node.ring.cellHeight, node.ring.cellDepth).multiplyScalar(0.72);
@@ -6610,14 +7481,14 @@
                 effects.push({
                     type: "chunk",
                     mesh,
-                    velocity: away.multiplyScalar(2.6 + Math.random() * 3.4)
-                        .add(new THREE.Vector3((Math.random() - 0.5) * 2, 4.2 + Math.random() * 2.6, (Math.random() - 0.5) * 2)),
+                    velocity: away.multiplyScalar(2.6 + random() * 3.4)
+                        .add(new THREE.Vector3((random() - 0.5) * 2, 4.2 + random() * 2.6, (random() - 0.5) * 2)),
                     spin: new THREE.Vector3(
-                        (Math.random() - 0.5) * 6,
-                        (Math.random() - 0.5) * 5,
-                        (Math.random() - 0.5) * 6
+                        (random() - 0.5) * 6,
+                        (random() - 0.5) * 5,
+                        (random() - 0.5) * 6
                     ),
-                    life: 1 + Math.random() * 0.4,
+                    life: 1 + random() * 0.4,
                     groundY: node.ring.cellHeight * 0.36
                 });
             }
@@ -6650,7 +7521,8 @@
                 );
                 pit.rotation.x = -Math.PI / 2;
                 pit.position.y = 0.05;
-                scene.add(pit);
+                if (C_BLOCKS) { pit.geometry.dispose(); pit.material.dispose(); }
+                else scene.add(pit);
 
                 buildDust(node.position.clone().setY(1.2), 16, 2.2, node.tier.chunkColor);
                 buildPopEffect(node.position.clone().setY(1.4), 20, node.tier.glow);
@@ -6671,6 +7543,7 @@
                 // 之前落地——checkFinaleTrigger 延后 0.45 秒起，正好够这句话先说完。
                 if (tierId === "high" && breachedByTier.high === 1) {
                     revealTierRing(SEALED_TIER);
+                    showEvolveWhenReachable();
                 }
             }
 
@@ -6705,6 +7578,7 @@
             // 略松一点。两套约束因此不会在边界上互相顶：有岩壁的半径上石头先挡住人，
             // 没岩壁的那一段（自由圆到 18.2）由这里兜住。
             function clampToSector(point) {
+                if (C_BLOCKS) { point.x = THREE.MathUtils.clamp(point.x, -5.9, 5.9); point.z = Math.min(-3.1, point.z); return point; }
                 const radius = Math.hypot(point.x, point.z);
                 if (radius <= SECTOR.freeRadius) return point;
                 const angle = Math.atan2(point.z, point.x);
@@ -6764,6 +7638,7 @@
             // 这时直接指矿，箭头就是一条穿墙而过的直线，照着走只会撞在城墙上。
             // 先把他领到走廊口，进了走廊再指矿。
             function guideThroughGate(target) {
+                if (C_BLOCKS) return target;
                 // 目标本来就在自由圆里就不用绕。走廊口是为「目标在矿区、玩家在城里」
                 // 那一种情形准备的；对城内目标它会把玩家一路拽向 15.5 米外的谷口，
                 // 离目标越来越远，而走开之后偏角更大、绕行更不肯松手——实测锄头 Lv2
@@ -6963,7 +7838,7 @@
             function createRover(lane, patrol) {
                 const tier = ORE_TIERS[lane.inner];
                 const geo = laneGeometry(lane);
-                const angle = SECTOR.center + patrol.gap / geo.mid;
+                const angle = SECTOR.center + (C_BLOCKS ? THREE.MathUtils.clamp(patrol.gap, -3.5, 3.5) : patrol.gap) / geo.mid;
                 const group = new THREE.Group();
                 group.position.set(Math.cos(angle) * geo.mid, 0, Math.sin(angle) * geo.mid);
                 group.scale.setScalar(lane.scale);
@@ -7087,18 +7962,40 @@
                     emerging: 0,
                     engaged: false,
                     // 错开步态相位，六只怪不至于像仪仗队一样同步迈腿。
-                    walkPhase: Math.random() * Math.PI * 2,
+                    walkPhase: random() * Math.PI * 2,
                     patrol: {
                         radius: geo.mid,
                         center: angle,
-                        span: patrol.spanArc / geo.mid,
+                        span: (C_BLOCKS ? Math.min(patrol.spanArc, 1) : patrol.spanArc) / geo.mid,
                         angle,
-                        dir: Math.random() < 0.5 ? -1 : 1
+                        dir: random() < 0.5 ? -1 : 1
                     }
                 };
                 createHealthBar(group);
                 enemies.push(group);
                 return group;
+            }
+
+            function spawnFinalWave() {
+                if (finalWave.spawned) return;
+                finalWave.spawned = true;
+                markRun("final-wave");
+                const lane = { ...ROVER_LANES[2], hp: 120, damage: 1, drop: 0, scale: 0.55, speed: 2.2 };
+                const geo = laneGeometry(lane);
+                finalWave.left = 0;
+                finalWave.right = 0;
+                for (let i = 0; i < 60; i++) {
+                    const side = i < 30 ? -1 : 1;
+                    const column = i % 10;
+                    const gap = side * (C_BLOCKS ? 0.6 + column * 0.28 : 3 + column * 0.75);
+                    const enemy = createRover(lane, { gap, spanArc: 0.5 });
+                    enemy.userData.wave = true;
+                    enemy.userData.engaged = true;
+                    enemy.position.addScaledVector(enemy.position.clone().normalize(), (Math.floor((i % 30) / 10) - 1) * 0.85);
+                    constrainEnemy(enemy);
+                    finalWave.count += 1;
+                    finalWave[enemy.position.x < 0 ? "left" : "right"]++;
+                }
             }
 
             function spawnRovers() {
@@ -7127,6 +8024,7 @@
             // （低级矿两段），凿穿一段就意味着走廊和内侧连通了，怪从哪个缺口绕进来是
             // 它自己走位的事——而它确实走不了直线，实心墙由 constrainEnemy 挡着。
             function roverReachable(enemy) {
+                if (C_BLOCKS && enemy.position.z < blockFront()) return false;
                 const lane = enemy.userData.lane;
                 return !lane || breachedByTier[lane.inner] > 0;
             }
@@ -7141,6 +8039,7 @@
                 if (p.angle > p.center + p.span) { p.angle = p.center + p.span; p.dir = -1; }
                 if (p.angle < p.center - p.span) { p.angle = p.center - p.span; p.dir = 1; }
                 enemy.position.set(Math.cos(p.angle) * p.radius, 0, Math.sin(p.angle) * p.radius);
+                constrainEnemy(enemy);
                 const heading = Math.atan2(-Math.sin(p.angle) * p.dir, Math.cos(p.angle) * p.dir);
                 enemy.rotation.y = lerpAngle(enemy.rotation.y, heading, 1 - Math.exp(-6 * dt));
             }
@@ -7220,7 +8119,7 @@
                         if (column && column.blockCount > 0) { open = false; break; }
                     }
                     if (!open) continue;
-                    const angle = SECTOR.start + (ai + 0.5) * ring.cellAngle;
+                    const angle = ring.angleStart + (ai + 0.5) * ring.cellAngle;
                     const delta = Math.abs(signedAngleDelta(angle, fromAngle));
                     if (delta < bestDelta) {
                         bestDelta = delta;
@@ -7309,11 +8208,13 @@
 
             function updateRover(enemy, dt) {
                 const data = enemy.userData;
+                // 末波持续主动追击；碰撞与缺口绕行仍由原战斗逻辑处理。
+                if (data.wave && roverReachable(enemy)) data.engaged = true;
                 const distance = flatDistance(enemy.position, player.position);
                 // 一旦被激怒就交给守卫那套追击/挥击逻辑，直到玩家跑远。追远了不原地站着，
                 // 而是回到自己那段弧上接着走——它本来就是「在这条走廊上活动的东西」。
                 if (data.engaged) {
-                    if (distance > ROVER_RANGE.leash || roverStrayed(enemy)) {
+                    if (!data.wave && (distance > ROVER_RANGE.leash || roverStrayed(enemy))) {
                         data.engaged = false;
                         data.attackState = "chasing";
                         data.attackTimer = 0;
@@ -7344,7 +8245,8 @@
             // 矿体半透明后野怪一开始就该看得见，amount 只控制清晰度，不再控制显隐。
             function setMonsterSilhouette(monster, amount) {
                 const data = monster.userData;
-                monster.visible = true;
+                // B 在真正挖穿、revealOreMonster 之前不泄露守卫及其眼睛/接地环。
+                monster.visible = !HIDE_GUARDS;
                 data.silhouetteMaterial.opacity = 0.34 + amount * 0.4;
                 for (const mesh of data.meshes) mesh.material = data.silhouetteMaterial;
                 // 冻结时不能用矿层自己的辉光色：青矿配薄荷绿眼睛等于隐身。
@@ -7364,6 +8266,7 @@
             // 近处的守卫压在矿墙之上透出来，远处恢复深度测试。
             // 不按距离收住的话，外圈守卫会直接画在内圈矿墙和主城前面。
             function setGuardXray(monster, on) {
+                on = on && !HIDE_GUARDS;
                 const data = monster.userData;
                 data.silhouetteMaterial.depthTest = !on;
                 data.eyeMaterial.depthTest = !on;
@@ -7373,8 +8276,26 @@
                 data.rootMark.renderOrder = on ? 5 : 1;
             }
 
-            function revealOreMonster(node) {
-                if (node.monsterRevealed) return;
+            function guardExitColumn(node) {
+                if (!node.monster || !node.columns.length) return null;
+                if (C_BLOCKS) {
+                    return node.columns.filter(c => c.ri === 0 &&
+                        Array.from({length:node.ring.radialCells},(_,ri)=>columnAt(node.ring,c.ai,ri)).every(c=>c && c.blockCount===0))
+                        .sort((a,b)=>Math.hypot(a.x-player.position.x,a.z-player.position.z)-Math.hypot(b.x-player.position.x,b.z-player.position.z))[0] || null;
+                }
+                const ai = Math.min(node.arcEnd - 1, Math.max(node.arcStart,
+                    Math.floor((node.angleCenter - node.ring.angleStart) / node.ring.cellAngle)));
+                for (let ri = 0; ri < node.ring.radialCells; ri++) {
+                    const column = columnAt(node.ring, ai, ri);
+                    if (!column || column.blockCount > 0) return null;
+                }
+                return columnAt(node.ring, ai, 0);
+            }
+
+            function revealOreMonster(node, force = false) {
+                if (node.monsterRevealed || !node.monster) return;
+                const exposedExit = guardExitColumn(node);
+                if (!force && !exposedExit) return;
                 node.monsterRevealed = true;
                 const monster = node.monster;
                 const data = monster.userData;
@@ -7395,7 +8316,16 @@
                 data.rootMark.visible = false;
                 data.alive = true;
                 data.attackable = true;
+                // 从实际凿穿的通道内口出土；段中心可能仍是实心墙，不能把它当出生点。
+                if (exposedExit) {
+                    const exit = exposedExit;
+                    const radius = node.ring.innerRadius - ROVER_BODY_RADIUS - 0.1;
+                    monster.position.set(exit.cosA * radius, 0, exit.sinA * radius);
+                }
                 data.homePosition = monster.position.clone().setY(0);
+                data.birthColumn = node.columns.reduce((best, c) => !best ||
+                    Math.hypot(c.x - monster.position.x, c.z - monster.position.z) <
+                    Math.hypot(best.x - monster.position.x, best.z - monster.position.z) ? c : best, null);
                 data.emerging = 0.36;
                 data.emergeDepth = 1.4;
                 monster.position.y = -data.emergeDepth;
@@ -7498,6 +8428,7 @@
                     if (data.emerging > 0) {
                         data.emerging = Math.max(0, data.emerging - dt);
                         enemy.position.y = -data.emergeDepth * (data.emerging / 0.36);
+                        if (data.emerging === 0) constrainEnemy(enemy);
                         continue;
                     }
                     enemy.position.y = 0;
@@ -7525,6 +8456,7 @@
             // 不能写死成满级半径——开局那会儿城只有 6.6 米，按 14.6 划禁区会把低级守卫
             // 挡在它自己那圈矿的门口。
             function cityKeepOutRadius() {
+                if (C_BLOCKS) return 0;
                 if (cityLevel <= 0) return 0;
                 const stage = CITY_STAGES[Math.min(cityLevel, CITY_STAGES.length) - 1];
                 return stage.radius + GUARD_CHASE.keepOutMargin;
@@ -7546,12 +8478,25 @@
                 // 读作「追到地盘边上」。真正的放弃交给 updateEnemyLeash 的距离判断。
                 const floor = cityKeepOutRadius();
                 if (floor > 0) {
-                    const radius = Math.hypot(enemy.position.x, enemy.position.z);
+                    const radius = Math.hypot(enemy.position.x, enemy.position.z - CITY_OFFSET_Z);
                     if (radius > 0.001 && radius < floor) {
                         const scale = floor / radius;
                         enemy.position.x *= scale;
-                        enemy.position.z *= scale;
+                        enemy.position.z = CITY_OFFSET_Z + (enemy.position.z - CITY_OFFSET_Z) * scale;
                     }
+                }
+                // 前沿广场与老城一样禁止敌人占住升级入口；中级矿前仍保留战斗空地。
+                if (frontierCity.active && Math.abs(enemy.position.x) < 7.4 &&
+                    enemy.position.z > -22 && enemy.position.z < -11.8) {
+                    const p = enemy.position;
+                    const exits = [
+                        { gap: p.x + 7.4, x: -7.4, z: p.z },
+                        { gap: 7.4 - p.x, x: 7.4, z: p.z },
+                        { gap: p.z + 22, x: p.x, z: -22 },
+                        { gap: -11.8 - p.z, x: p.x, z: -11.8 }
+                    ];
+                    const exit = exits.reduce((a, b) => a.gap < b.gap ? a : b);
+                    p.x = exit.x; p.z = exit.z;
                 }
                 // 游荡怪不得穿墙。矿墙原先只挡玩家（见 resolveOreWallPosition 的调用方
                 // resolveCirclePosition），怪一律是直接穿过去的——走廊里的怪追人时会径直
@@ -7563,17 +8508,26 @@
                 // 这里管的是「追的时候只能走哪儿」，两条缺一不可——光有仇恨门的话，
                 // 凿穿一段之后它照旧会从没挖的那一段墙里直接穿出来。
                 //
-                // 只钳游荡怪。守卫是从矿墙内部出土的，它的家就在墙体半径上，一起钳的话
-                // 通道稍窄就会把它顶出扇区、或者干脆卡死在自己出生的那一格里。
+                // 守卫与游荡怪一起受矿墙约束；守卫仅暂时豁免出生柱，走出后永久撤销。
                 //
                 // 半径取 0.5 而不是玩家的 0.62：它必须能跟着玩家钻进玩家自己挖的隧道，
                 // 比玩家胖就进不来，追击到洞口就断，等于白改。0.5 也确实是它的体宽
                 // （躯干 1.2 宽 × lane.scale 0.62~0.85，半宽 0.37~0.51）。
-                if (enemy.userData.type === "rover") {
-                    resolveOreWallPosition(enemy.position, ROVER_BODY_RADIUS);
-                }
+                const data = enemy.userData;
+                const birth = data.birthColumn;
+                if (birth && Math.hypot(enemy.position.x - birth.x, enemy.position.z - birth.z) >
+                    Math.hypot(birth.halfArc, birth.halfDepth) + ROVER_BODY_RADIUS) data.birthColumn = null;
+                resolveOreWallPosition(enemy.position, ROVER_BODY_RADIUS, data.birthColumn);
                 // 守卫被击退时会飞出扇形，落到玩家根本走不过去的地方——那一只就再也打不到了。
+                const boundaryX = enemy.position.x, boundaryZ = enemy.position.z;
                 clampToSector(enemy.position);
+                if (C_BLOCKS) {
+                    // 只有边界真的移动了敌人时才重算，普通巡逻不重复扫描矿柱。
+                    if (boundaryX !== enemy.position.x || boundaryZ !== enemy.position.z)
+                        resolveOreWallPosition(enemy.position,ROVER_BODY_RADIUS,data.birthColumn);
+                    const closed = blockFront();
+                    if (enemy.position.z < closed && player.position.z > closed) enemy.userData.engaged = false;
+                }
             }
 
             function updateEnemyLeash(enemy, dt) {
@@ -7586,11 +8540,13 @@
                     const direction = home.clone().sub(enemy.position).setY(0);
                     if (direction.length() < 0.25) {
                         enemy.position.set(home.x, 0, home.z);
+                        constrainEnemy(enemy);
                         data.leashState = "leashed";
                         return true;
                     }
                     direction.normalize();
                     enemy.position.addScaledVector(direction, config.returnSpeed * dt);
+                    constrainEnemy(enemy);
                     enemy.rotation.y = lerpAngle(enemy.rotation.y, Math.atan2(direction.x, direction.z), 0.2);
                     return true;
                 }
@@ -7643,7 +8599,7 @@
                 const last = enemy.userData.lastSkill;
                 let pool = skills.filter(s => s.kind !== last);
                 if (pool.length === 0) pool = skills;
-                let roll = Math.random() * pool.reduce((sum, s) => sum + (s.weight || 1), 0);
+                let roll = random() * pool.reduce((sum, s) => sum + (s.weight || 1), 0);
                 let chosen = pool[pool.length - 1];
                 for (const skill of pool) {
                     roll -= skill.weight || 1;
@@ -7671,7 +8627,7 @@
                 if (!skills || skills.length === 0) return null;
                 const pool = skills.filter(skill => skillReach(skill, base) >= distance);
                 if (pool.length === 0) return null;
-                let roll = Math.random() * pool.reduce((sum, s) => sum + (s.weight || 1), 0);
+                let roll = random() * pool.reduce((sum, s) => sum + (s.weight || 1), 0);
                 let chosen = pool[pool.length - 1];
                 for (const skill of pool) {
                     roll -= skill.weight || 1;
@@ -7697,7 +8653,7 @@
             // 所以「追多凶」的合理值也不同，得能分开拖。巨龙不乘——终局演出不结算移动。
             function chaseSpeedOf(enemy, config) {
                 const type = enemy.userData.type;
-                if (type === "rover") return config.speed * ROVER_RANGE.chase;
+                if (type === "rover") return config.speed * (config.chase || ROVER_RANGE.chase);
                 if (type === "monster") return config.speed * GUARD_CHASE.speed;
                 return config.speed;
             }
@@ -7709,7 +8665,7 @@
                 // 免得用上一招的攻击距离去决定下一次起手。
                 const config = data.activeSkill || data.config;
 
-                // 破绽。玩家完美闪避换来的窗口：不追、不起手、踉跄着挨打。
+                // 破绽。玩家闪避换来的窗口：不追、不起手、踉跄着挨打。
                 // 姿态借 setMonsterPose 的负值——守卫读作双臂垂落，四足的游荡怪读作身体后仰。
                 if (data.attackState === "stunned") {
                     data.attackTimer -= dt;
@@ -7946,18 +8902,18 @@
                 return facing - Math.PI / 2;
             }
 
-            // 玩家此刻是否在这个预警的判定范围里。每帧问一次（记 lastInsideAt，判完美闪避），
+            // 玩家此刻是否在这个预警的判定范围里。每帧问一次（记 lastInsideAt，判闪避），
             // 结算时再问一次算命中——两处必须是同一套算法，否则会出现「看着躲开了却挨打」
             // 或者反过来，而这套改造的全部说服力就在于预警所见即判定所得。
-            function hazardContainsPlayer(hazard) {
+            function hazardContainsPlayer(hazard, point = player.position) {
                 if (hazard.kind === "fan") {
-                    const toPlayer = player.position.clone().sub(hazard.source.position).setY(0);
+                    const toPlayer = point.clone().sub(hazard.source.position).setY(0);
                     if (toPlayer.length() > hazard.radius) return false;
                     const facing = new THREE.Vector3(Math.sin(hazard.facing), 0, Math.cos(hazard.facing));
                     return toPlayer.normalize().dot(facing) >= Math.cos(hazard.angle / 2);
                 }
                 if (hazard.kind === "line") {
-                    const toPlayer = player.position.clone().sub(hazard.origin).setY(0);
+                    const toPlayer = point.clone().sub(hazard.origin).setY(0);
                     const forward = new THREE.Vector3(Math.sin(hazard.facing), 0, Math.cos(hazard.facing));
                     const along = toPlayer.dot(forward);
                     if (along < 0 || along > hazard.length) return false;
@@ -7965,10 +8921,10 @@
                     const side = toPlayer.x * forward.z - toPlayer.z * forward.x;
                     return Math.abs(side) <= hazard.width / 2;
                 }
-                return flatDistance(player.position, hazard.mesh.position) <= hazard.radius;
+                return flatDistance(point, hazard.mesh.position) <= hazard.radius;
             }
 
-            // 完美闪避的地面提示：玩家脚下一圈青白光环炸开。用玩家攻击弧光那个色系
+            // 闪避的地面提示：玩家脚下一圈青白光环炸开。用玩家攻击弧光那个色系
             // （0x8fd6ff 一族），和怪物预警的橙红明确分开——这一圈要一眼读成
             // 「我做对了」，而不是又一个危险区。
             function spawnDodgeRing() {
@@ -8001,7 +8957,7 @@
                 showDamage(enemy.position, "狂暴", false, "frenzy");
             }
 
-            // 完美闪避的全部回报都在这儿：怪物踉跄一段，这段时间它不能起手、受伤翻倍。
+            // 闪避的全部回报都在这儿：怪物踉跄一段，这段时间它不能起手、受伤翻倍。
             // 躲开因此不再只是「少掉几点血」，而是换来一个能安全输出的窗口。
             function triggerPerfectDodge(enemy) {
                 const data = enemy.userData;
@@ -8015,7 +8971,7 @@
                 hitStop = Math.max(hitStop, ARPG.hitStop);
                 cameraShake = Math.max(cameraShake, 0.22);
                 playSound("perfect");
-                showDamage(player.position, "完美闪避", false, "perfect");
+                showDamage(player.position, "闪避", false, "perfect");
                 spawnDodgeRing();
             }
 
@@ -8037,7 +8993,7 @@
                     const ratio = 1 - hazard.life / hazard.maxLife;
                     hazard.mesh.material.opacity = 0.2 + ratio * 0.42;
 
-                    // 记下玩家最后一次待在圈里的时刻。完美闪避判的是「待到最后一刻才走掉」，
+                    // 记下玩家最后一次待在圈里的时刻。闪避判的是「待到最后一刻才走掉」，
                     // 需要的是这个时间戳，而不是结算那一帧的位置。
                     if (ARPG.enabled && hazardContainsPlayer(hazard)) hazard.lastInsideAt = elapsed;
 
@@ -8069,6 +9025,7 @@
                     buildPopEffect(burstAt, 14, 0xff7b52);
                     cameraShake = Math.max(cameraShake, 0.3);
                     playSound("hit");
+                    damageOreFromHazard(hazard);
                     if (hit) {
                         damagePlayer(hazard.damage, hazard.source.position, hazard.knockback);
                         continue;
@@ -8129,6 +9086,7 @@
             function killEnemy(target) {
                 const data = target.userData;
                 data.alive = false;
+                if (data.wave) finalWave.killed += 1;
                 data.attackable = false;
                 cancelHazardsFrom(target);
                 buildDeathDebris(target);
@@ -8163,24 +9121,24 @@
                 const color = target.userData.tier ? target.userData.tier.chunkColor : 0x8a7f92;
                 for (let i = 0; i < 14; i++) {
                     const mesh = new THREE.Mesh(shared.box, new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
-                    const scale = 0.22 + Math.random() * 0.24;
+                    const scale = 0.22 + random() * 0.24;
                     mesh.scale.setScalar(scale);
                     mesh.position.copy(target.position).add(new THREE.Vector3(
-                        (Math.random() - 0.5) * 2,
-                        0.8 + Math.random() * 2.4,
-                        (Math.random() - 0.5) * 2
+                        (random() - 0.5) * 2,
+                        0.8 + random() * 2.4,
+                        (random() - 0.5) * 2
                     ));
                     scene.add(mesh);
                     effects.push({
                         type: "chunk",
                         mesh,
                         velocity: new THREE.Vector3(
-                            (Math.random() - 0.5) * 6,
-                            4 + Math.random() * 4,
-                            (Math.random() - 0.5) * 6
+                            (random() - 0.5) * 6,
+                            4 + random() * 4,
+                            (random() - 0.5) * 6
                         ),
-                        spin: new THREE.Vector3(Math.random() * 5, Math.random() * 5, Math.random() * 5),
-                        life: 1.1 + Math.random() * 0.5,
+                        spin: new THREE.Vector3(random() * 5, random() * 5, random() * 5),
+                        life: 1.1 + random() * 0.5,
                         groundY: scale * 0.5
                     });
                 }
@@ -8247,6 +9205,7 @@
             // init() 里的 setupTuning() 才写进 ORE_TIERS。存成模块级常量的话它在脚本
             // 求值时就定死了，调参改完环半径，蛋会留在旧走廊的位置——而那时那儿是矿墙里。
             function eggSitePosition() {
+                if (C_BLOCKS) return cityLevel>=4?new THREE.Vector3(-2.9,0,-28):new THREE.Vector3(2.9,0,-22);
                 const radius = (ORE_TIERS.mid.ringRadius + ORE_TIERS.mid.ringThickness / 2 +
                     ORE_TIERS.high.ringRadius - ORE_TIERS.high.ringThickness / 2) / 2;
                 return new THREE.Vector3(
@@ -8258,6 +9217,7 @@
 
             function spawnFixedEgg() {
                 if (eggSpawned) return;
+                if(C_BLOCKS && cityLevel<3)return;
                 spawnEggAt(eggSitePosition(), true);
             }
 
@@ -8273,6 +9233,7 @@
                 if (watchdogTimer < 1.5) return;
                 watchdogTimer = 0;
                 ensureEggAvailability();
+                showEvolveWhenReachable();
                 maybeShowSealOffering();
                 // 单轨的窗口是事件驱动的（升完武器、破壳），但那些回调只在成功路径上跑。
                 // watchdog 每 1.5 秒对一次账，免得任何一条边角分支把锻造台永久留在错误状态。
@@ -8287,7 +9248,9 @@
 
             // 没有任何收入来源却买不起下一步时兜底，避免流程走到死路。
             function ensureProgressAffordable() {
-                if (finaleStarted) return;
+                // C 的下一矿区可能只是尚未建成开放，不能误判资源耗尽并发放高级宝石。
+                // C 由区块资源预算和通关回归保证可负担，禁止自动补资源。
+                if (C_BLOCKS || finaleStarted) return;
                 // 只算挖得动的矿：锄头门槛会让玩家守着一地凿不开的矿，却没钱升级锄头。
                 if (oreNodes.some(node => !node.cleared && canMine(node))) return;
 
@@ -8342,6 +9305,10 @@
                 }
                 // 按地贴自己的货币补。原来一律补金币，钻石地贴卡住时补了等于没补。
                 const short = blocking.cost - blocking.paid;
+                if (C_BLOCKS && walletOf(currency, tileShardGrade(blocking.id)) < short) {
+                    const missing = short - walletOf(currency, tileShardGrade(blocking.id));
+                    blockState.fallback += missing; blockState.fallbackEvents.push({ at: runClock, tile: blocking.id, currency, missing });
+                }
                 const grade = tileShardGrade(blocking.id);
                 if (currency === "gem") {
                     if (gems < short) gainGems(short - gems);
@@ -8408,7 +9375,7 @@
                 const mesh = createEggMesh();
                 mesh.position.copy(findClearSpot(position)).setY(0.95);
                 scene.add(mesh);
-                eggPickup = { mesh, bob: Math.random() * 6, progress: 0 };
+                eggPickup = { mesh, bob: random() * 6, progress: 0 };
                 setEggLockProgress(0);
                 ui.eggLock.classList.add("show");
                 if (silent) return;
@@ -8547,7 +9514,7 @@
                 // 单轨的第三棒：破壳之后锻造台重新亮起来收 Lv3。
                 // 武器线被关掉时它不存在，进化台就得在这儿直接放出，否则宠物线断在这里。
                 if (weaponEnabled()) syncForgeWindow();
-                else if (!petEvolved) showTile("evolve");
+                else showEvolveWhenReachable();
             }
 
             function createPet() {
@@ -8663,11 +9630,59 @@
                 }
             }
 
+            function createChainBolt(from, to) {
+                const points = [from.clone()];
+                const delta = to.clone().sub(from);
+                const sideways = new THREE.Vector3(-delta.z, 0, delta.x).normalize();
+                for (let i = 1; i < 7; i++) {
+                    points.push(from.clone().lerp(to, i / 7)
+                        .addScaledVector(sideways, (i % 2 ? 1 : -1) * (0.16 + random() * .2)));
+                }
+                points.push(to.clone());
+                const path = new THREE.CurvePath();
+                for (let i = 1; i < points.length; i++) path.add(new THREE.LineCurve3(points[i - 1], points[i]));
+                const group = new THREE.Group();
+                for (const [radius, color, opacity] of [[.13, 0x4cbcff, .45], [.045, 0xecffff, 1]]) {
+                    const mesh = new THREE.Mesh(new THREE.TubeGeometry(path, 28, radius, 4, false),
+                        new THREE.MeshBasicMaterial({color, transparent:true, opacity, depthWrite:false, blending:THREE.AdditiveBlending}));
+                    mesh.userData.opacity = opacity;
+                    group.add(mesh);
+                }
+                scene.add(group);
+                effects.push({type:"chainBolt",mesh:group,life:.34,maxLife:.34});
+            }
+
             function petShoot(target) {
-                const origin = pet.position.clone().add(new THREE.Vector3(0, 0, 0));
-                createProjectile(origin, target, pet.userData.beamColor, 26, hit => {
+                if (petEvolved) {
+                    const struck = new Set();
+                    const damage = pet.userData.damage;
+                    const jump = (enemy, from) => {
+                        if (!enemy?.userData.alive || !enemy.userData.attackable || finaleStarted) return;
+                        const at = enemy.position.clone().setY(1.3);
+                        createChainBolt(from, at);
+                        struck.add(enemy);
+                        damageEnemy(enemy, damage, damage, true);
+                        buildPopEffect(at, 6, 0x9eeaff);
+                        pet.userData.maxSplashHits = Math.max(pet.userData.maxSplashHits || 0, struck.size);
+                        if (struck.size >= BALANCE.pet.evolved.chainTargets) return;
+                        defer(.045, () => {
+                            let next = null, closest = BALANCE.pet.evolved.chainRange;
+                            for (const candidate of enemies) {
+                                if (struck.has(candidate) || !candidate.userData.alive || !candidate.userData.attackable || !inPlayerSight(candidate)) continue;
+                                const distance = flatDistance(candidate.position, at);
+                                if (distance > closest || pathCrossesOre(at, candidate.position, .05)) continue;
+                                next = candidate; closest = distance;
+                            }
+                            if (next) jump(next, at);
+                        });
+                    };
+                    jump(target, pet.position.clone());
+                    playSound("ice");
+                    return;
+                }
+                createProjectile(pet.position.clone(), target, pet.userData.beamColor, 26, hit => {
                     if (!hit.userData.alive) return;
-                    buildPopEffect(hit.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 8, pet.userData.beamColor);
+                    buildPopEffect(hit.position.clone().setY(1.5), 8, pet.userData.beamColor);
                     damageEnemy(hit, pet.userData.damage, pet.userData.damage, false);
                 });
                 playSound("ice");
@@ -8813,6 +9828,51 @@
                 return pick;
             }
 
+            function startOpeningReveal() {
+                opening.active = true;
+                for (const ore of oreNodes) if (ore.monster) ore.monster.visible = false;
+                const node = oreNodes.filter(n => n.tierId === SEALED_TIER)[0];
+                const center = node.position.clone().setY(0);
+                const approach = center.clone().normalize();
+                const lateral = new THREE.Vector3(-approach.z, 0, approach.x);
+                finale.dragon = createFlameDragon();
+                finale.dragon.position.copy(center).addScaledVector(lateral, -4).setY(-1.6);
+                finale.dragon.rotation.y = Math.atan2(lateral.x, lateral.z);
+                sealDragonInStone(finale.dragon, true);
+                startCinematic([
+                    { at: 2.1, run: () => {
+                        ui.cineTitle.classList.remove("show");
+                        ui.cineSub.classList.remove("show");
+                        cinematic.response = 4.5;
+                        cinematic.lookTarget = player.position.clone().add(new THREE.Vector3(0, 0.85, -2.6));
+                        cinematic.cameraTarget = cinematic.lookTarget.clone().add(new THREE.Vector3(0, FOLLOW_CAMERA.height, FOLLOW_CAMERA.back));
+                    } },
+                    { at: 3.2, run: finishOpeningReveal }
+                ], "opening");
+                const offset = approach.clone().multiplyScalar(-1).setY(0.9);
+                cinematicShot(center, offset, framingDistance(30, 22), 4.5, true);
+                cinematicShot(center, offset, framingDistance(28, 20), 4.5);
+                ui.cineTitle.textContent = "FLAME DRAGON";
+                ui.cineSub.textContent = LANG === "en" ? "Break the seal. Defeat the dragon. Tap to skip" : "凿穿矿山，击败巨龙 · 点击跳过";
+                ui.cineTitle.classList.add("show");
+                ui.cineSub.classList.add("show");
+                camera.lookAt(cameraFocus);
+            }
+
+            function finishOpeningReveal() {
+                if (!opening.active) return;
+                opening.active = false;
+                opening.finished = true;
+                for (const ore of oreNodes) if (ore.monster && !ore.monsterRevealed) ore.monster.visible = !HIDE_GUARDS;
+                endCinematic();
+                cameraFocus.copy(player.position).add(new THREE.Vector3(0, 0.85, -2.6));
+                camera.position.copy(cameraFocus).add(new THREE.Vector3(0, FOLLOW_CAMERA.height, FOLLOW_CAMERA.back));
+                camera.lookAt(cameraFocus);
+                ui.guide.style.display = "";
+                ui.cineSub.textContent = LANG === "en" ? "FLAME DRAGON UNSEALED" : "火焰巨龙 破封";
+                setTutorial(true, "拖动摇杆移动，走进光圈建设主城");
+            }
+
             function startFlameDragonIntro() {
                 // 破封点优先用玩家砸开的那一段（breakSeal 写下的）。没有就退回
                 // sealedDragonSite()：金币版仍然走那条路，它按「离玩家最远」挑点。
@@ -8860,7 +9920,7 @@
                     .addScaledVector(lateral, -7)
                     .addScaledVector(approach, -4)
                     .setY(0);
-                finale.dragon = createFlameDragon();
+                finale.dragon = finale.dragon || createFlameDragon();
                 // 封印姿态：侧身顺着矿环躺进墙里，沉到龙头落在墙高之内
                 // （头在模型局部 7.15，乘 1.05 的整体缩放，封印矿墙高 6.2）。
                 // 一朝玩家，八米长的头颈就会径直捅向相机、探出墙外那片深色天空，
@@ -9062,8 +10122,8 @@
                 ]);
             }
 
-            function startCinematic(steps) {
-                markRun("finale");
+            function startCinematic(steps, kind = "finale") {
+                if (kind === "finale") markRun("finale");
                 if (tutorialVisible) setTutorial(false);
                 ui.guide.style.display = "none";
                 cinematic.active = true;
@@ -9453,7 +10513,7 @@
                 });
                 if (!picks.length) return;
                 for (let i = 0; i < count; i++) {
-                    const { node, cellIndex } = picks[Math.floor(Math.random() * picks.length)];
+                    const { node, cellIndex } = picks[Math.floor(random() * picks.length)];
                     const cell = node.cells[cellIndex];
                     const mesh = new THREE.Mesh(shared.box, shared.chunkMaterials[node.tierId]);
                     mesh.scale.set(cell.width, node.ring.cellHeight, node.ring.cellDepth).multiplyScalar(0.85);
@@ -9465,20 +10525,53 @@
                     effects.push({
                         type: "chunk",
                         mesh,
-                        velocity: out.normalize().multiplyScalar(5 + Math.random() * 8)
-                            .add(new THREE.Vector3(0, 9 + Math.random() * 8, 0)),
+                        velocity: out.normalize().multiplyScalar(5 + random() * 8)
+                            .add(new THREE.Vector3(0, 9 + random() * 8, 0)),
                         spin: new THREE.Vector3(
-                            (Math.random() - 0.5) * 9,
-                            (Math.random() - 0.5) * 8,
-                            (Math.random() - 0.5) * 9
+                            (random() - 0.5) * 9,
+                            (random() - 0.5) * 8,
+                            (random() - 0.5) * 9
                         ),
-                        life: 1.3 + Math.random() * 0.5,
+                        life: 1.3 + random() * 0.5,
                         groundY: node.ring.cellHeight * 0.4
                     });
                 }
             }
 
-            function pulverizeColumn(column) {
+            function damageOreFromHazard(hazard) {
+                const center = hazard.kind === "fan" ? hazard.source.position : hazard.kind === "line" ? hazard.origin : hazard.mesh.position;
+                const reach = hazard.kind === "line" ? hazard.length : hazard.radius;
+                const touched = new Map();
+                // 先按攻击范围收集，再统一结算；不能因遍历顺序决定哪些矿柱算暴露面。
+                scanNearbyColumns(center, reach, column => {
+                    const node = column.node;
+                    if (node.tier.sealed || node.cleared || column.count <= 0 ||
+                        (C_BLOCKS && blockNodeLevel(node) > cityLevel)) return;
+                    if (!hazardContainsPlayer(hazard, new THREE.Vector3(column.x, 0, column.z))) return;
+                    if (!touched.has(node)) touched.set(node, []);
+                    touched.get(node).push(column);
+                });
+                for (const [node, columns] of touched) {
+                    let fragments = 0;
+                    for (const column of columns) {
+                        for (const index of column.cells) {
+                            const cell = node.cells[index];
+                            if (cell.removed || fragments >= 24) continue;
+                            launchOreChunk(node, cell);
+                            fragments++;
+                        }
+                        pulverizeColumn(column, true);
+                    }
+                    const nearest = columns.reduce((a,b) => Math.hypot(a.x-center.x,a.z-center.z) < Math.hypot(b.x-center.x,b.z-center.z) ? a : b);
+                    oreBreakFeedback(node, new THREE.Vector3(nearest.x, 1.2, nearest.z));
+                    node.instanced.instanceMatrix.needsUpdate = true;
+                    node.penetration = segmentPenetration(node, columns.map(c => c.ai));
+                    if (node.penetration >= 1) breachOreSegment(node);
+                    if (node.remaining <= 0 && !node.cleared) clearOreNode(node);
+                }
+            }
+
+            function pulverizeColumn(column, monsterDamage = false, construction = false) {
                 const node = column.node;
                 for (const cellIndex of column.cells) {
                     const cell = node.cells[cellIndex];
@@ -9486,15 +10579,21 @@
                     cell.removed = true;
                     node.remaining -= 1;
                     node.ring.remaining -= 1;
+                    column.count -= 1;
+                    if (cell.blocking) column.blockCount -= 1;
                     node.instanced.setMatrixAt(cellIndex, node.zeroMatrix);
-                    if (cell.coins) for (const coin of cell.coins) coin.visible = false;
-                    // 金币在这条路径上是不结算的——横扫给的是固定赏金（BALANCE.sweepBounty），
-                    // 按格再算一遍会把整局经济翻倍。宝石相反，它必须结算：赏金里没有宝石这一项，
-                    // 而宝石的供给正好卡在「够不够买下一把锄头」上，炸没几颗就可能是死局。
-                    if (cell.shard) takeShard(cell.shard);
+                    releaseOreCellLoot(cell, monsterDamage || construction, monsterDamage);
+                    if (monsterDamage) enemyMining.cells += 1;
                 }
-                column.count = 0;
-                column.blockCount = 0;
+                if (monsterDamage || construction) {
+                    const earned = Math.floor((node.total - node.remaining) / node.tier.cellsPerCoin);
+                    const amount = Math.max(0, earned - node.coinsReleased);
+                    node.coinsReleased = Math.max(node.coinsReleased, earned);
+                    if (amount) {
+                        dropCoins(new THREE.Vector3(column.x, 1, column.z), amount, BALANCE.coinToss.mine);
+                        if(monsterDamage)enemyMining.coins += amount;
+                    }
+                }
             }
 
             // 巨龙砸下来是在整圈矿墙上开一个大洞，按体素柱清而不是整段清，缺口才对得上落点。
@@ -9585,16 +10684,16 @@
                 for (let i = 0; i < 26; i++) {
                     const spark = getSpark(0xffa445);
                     if (!spark) break;
-                    spark.position.copy(origin).addScaledVector(direction, Math.random() * 12);
-                    spark.position.x += (Math.random() - 0.5) * 3;
-                    spark.position.y += (Math.random() - 0.5) * 2.4;
-                    spark.position.z += (Math.random() - 0.5) * 3;
+                    spark.position.copy(origin).addScaledVector(direction, random() * 12);
+                    spark.position.x += (random() - 0.5) * 3;
+                    spark.position.y += (random() - 0.5) * 2.4;
+                    spark.position.z += (random() - 0.5) * 3;
                     effects.push({
                         type: "spark",
                         mesh: spark,
-                        velocity: direction.clone().multiplyScalar(4 + Math.random() * 8)
-                            .add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 4, (Math.random() - 0.5) * 3)),
-                        life: 0.7 + Math.random() * 0.4,
+                        velocity: direction.clone().multiplyScalar(4 + random() * 8)
+                            .add(new THREE.Vector3((random() - 0.5) * 3, random() * 4, (random() - 0.5) * 3)),
+                        life: 0.7 + random() * 0.4,
                         maxLife: 1.1
                     });
                 }
@@ -9602,7 +10701,8 @@
 
             function updateFlameDragon(dt, elapsed) {
                 const dragon = finale.dragon;
-                if (!dragon) return;
+                // 开场预建的龙只保留封印姿态，不提前启动终局状态机。
+                if (!dragon || !finaleStarted) return;
 
                 // 破封前：封在墙里的剪影一下一下往外顶，矿脉跟着躁动、烧红、崩渣。
                 if (finale.charge >= 0) {
@@ -9632,8 +10732,8 @@
                     finale.sparkTimer -= dt;
                     if (finale.sparkTimer <= 0) {
                         finale.sparkTimer = 0.16 - heat * 0.1;
-                        const angle = Math.random() * Math.PI * 2;
-                        const spread = 2 + Math.random() * 4;
+                        const angle = random() * Math.PI * 2;
+                        const spread = 2 + random() * 4;
                         // 从墙顶往外崩。贴地生成的话火星整个埋在三米多厚的矿墙里，一颗都看不见。
                         buildPopEffect(finale.landing.clone().add(new THREE.Vector3(
                             Math.cos(angle) * spread,
@@ -9782,6 +10882,7 @@
                         gainGems(count - spare);
                     } else if (shard) {
                         shards[grade] += count - spare;
+                        ui.shardHud.classList.add("revealed");
                     } else {
                         coins += count - spare;
                         syncBackCoins();
@@ -9815,26 +10916,26 @@
                     // 碎块是 0.22~0.46 的小方块，钻石给到 1.15 就能从那一堆里挑出来。
                     mesh.scale.setScalar(shard ? 1.2 : gem ? 1.15 : 0.85);
                     mesh.position.copy(position).add(new THREE.Vector3(
-                        (Math.random() - 0.5) * 1.2 * spread,
-                        0.4 + Math.random() * 0.8,
-                        (Math.random() - 0.5) * 1.2 * spread
+                        (random() - 0.5) * 1.2 * spread,
+                        0.4 + random() * 0.8,
+                        (random() - 0.5) * 1.2 * spread
                     ));
                     // 影子金币不投影。横扫时场上会顶到 maxCoinDrops 上限，一百多个投影体
                     // 在移动端是实打实的开销，而这一枚本来就只是用来充数的。
                     mesh.castShadow = !ghost;
-                    scene.add(mesh);
+                    if (!C_BLOCKS || gem || shard) scene.add(mesh);
                     coinDrops.push({
                         mesh,
                         state: "toss",
                         velocity: new THREE.Vector3(
-                            (Math.random() - 0.5) * 4.6 * burst,
-                            (4.2 + Math.random() * 2.8) * burst,
-                            (Math.random() - 0.5) * 4.6 * burst
+                            (random() - 0.5) * 4.6 * burst,
+                            (4.2 + random() * 2.8) * burst,
+                            (random() - 0.5) * 4.6 * burst
                         ),
-                        spin: 4 + Math.random() * 6,
+                        spin: 4 + random() * 6,
                         // 起飞间隔随机而不是按下标递增：按下标的话真金币（下标在前）会整批
                         // 先飞、影子金币再飞，两拨分明；随机打散才混成一条连续的流。
-                        dwell: dwell + Math.random() * stagger * total,
+                        dwell: dwell + random() * stagger * total,
                         ghost,
                         gem,
                         shard,
@@ -9865,7 +10966,7 @@
                         if (coin.mesh.position.y <= 0.28) {
                             coin.mesh.position.y = 0.28;
                             coin.state = "idle";
-                            coin.mesh.rotation.set(Math.PI / 2, 0, Math.random() * Math.PI);
+                            coin.mesh.rotation.set(Math.PI / 2, 0, random() * Math.PI);
                         }
                         continue;
                     }
@@ -9921,6 +11022,7 @@
                     return;
                 }
                 if (coin.shard) {
+                    ui.shardHud.classList.add("revealed");
                     playSound("upgrade", 1.62);
                     popHud(ui.shardHud);
                     return;
@@ -9989,11 +11091,11 @@
                         type: "spark",
                         mesh: spark,
                         velocity: new THREE.Vector3(
-                            (Math.random() - 0.5) * 9,
-                            2 + Math.random() * 7,
-                            (Math.random() - 0.5) * 9
+                            (random() - 0.5) * 9,
+                            2 + random() * 7,
+                            (random() - 0.5) * 9
                         ),
-                        life: 0.42 + Math.random() * 0.34,
+                        life: 0.42 + random() * 0.34,
                         maxLife: 0.76
                     });
                 }
@@ -10014,25 +11116,25 @@
                 }
                 for (let i = 0; i < count; i++) {
                     const sprite = new THREE.Sprite(material.clone());
-                    const scale = 0.9 + Math.random() * 1.6;
+                    const scale = 0.9 + random() * 1.6;
                     sprite.scale.setScalar(scale);
                     sprite.position.copy(position).add(new THREE.Vector3(
-                        (Math.random() - 0.5) * spread,
-                        Math.random() * spread * 0.5,
-                        (Math.random() - 0.5) * spread
+                        (random() - 0.5) * spread,
+                        random() * spread * 0.5,
+                        (random() - 0.5) * spread
                     ));
                     scene.add(sprite);
                     effects.push({
                         type: "dust",
                         mesh: sprite,
                         velocity: new THREE.Vector3(
-                            (Math.random() - 0.5) * 1.6,
-                            0.7 + Math.random() * 1.4,
-                            (Math.random() - 0.5) * 1.6
+                            (random() - 0.5) * 1.6,
+                            0.7 + random() * 1.4,
+                            (random() - 0.5) * 1.6
                         ),
-                        life: 0.6 + Math.random() * 0.6,
+                        life: 0.6 + random() * 0.6,
                         maxLife: 1.2,
-                        growth: 1.6 + Math.random()
+                        growth: 1.6 + random()
                     });
                 }
             }
@@ -10081,6 +11183,22 @@
 
                     effect.life -= dt;
                     const ratio = effect.maxLife ? Math.max(0, effect.life / effect.maxLife) : 0;
+
+                    if (effect.type === "equipmentReveal") {
+                        effect.mesh.position.y+=dt*.6;
+                        const size=1.5*(.9+.1*Math.sin((1-ratio)*Math.PI));effect.mesh.scale.setScalar(size);
+                        if(effect.life<=0){scene.remove(effect.mesh);disposeEquipment(effect.mesh);effects.splice(i,1);}
+                        continue;
+                    }
+                    if (effect.type === "chainBolt") {
+                        for (const mesh of effect.mesh.children) mesh.material.opacity = mesh.userData.opacity * ratio;
+                        if (effect.life <= 0) {
+                            scene.remove(effect.mesh);
+                            for (const mesh of effect.mesh.children) { mesh.geometry.dispose(); mesh.material.dispose(); }
+                            effects.splice(i, 1);
+                        }
+                        continue;
+                    }
 
                     if (effect.type === "spark") {
                         effect.velocity.y -= 17 * dt;
@@ -10169,7 +11287,7 @@
                         if (effect.life <= 0) {
                             scene.remove(effect.mesh);
                             // 原先只是移出场景。破封那几发一局各放一次，漏了也看不出来；
-                            // 完美闪避的光环一局要放几十次，几何和材质都得回收。
+                            // 闪避的光环一局要放几十次，几何和材质都得回收。
                             effect.mesh.geometry.dispose();
                             effect.mesh.material.dispose();
                             effects.splice(i, 1);
@@ -10249,7 +11367,7 @@
                 if (point.z > 1) return;
                 const element = document.createElement("div");
                 element.className = `damage${big ? " big" : ""}${variant ? ` ${variant}` : ""}`;
-                // 绝大多数飘字是伤害数字，查表查不到、原样通过；只有「狂暴」「完美闪避」会命中。
+                // 绝大多数飘字是伤害数字，查表查不到、原样通过；只有「狂暴」「闪避」会命中。
                 element.textContent = t(text);
                 element.style.left = `${(point.x * 0.5 + 0.5) * innerWidth}px`;
                 element.style.top = `${(-point.y * 0.5 + 0.5) * innerHeight}px`;
@@ -10410,9 +11528,30 @@
                 return Math.abs(signedAngleDelta(Math.atan2(point.z, point.x), SECTOR.center)) <= SECTOR.half;
             }
 
+            // 目标途中若存在当前锄头凿不动的矿层，就先完成前置升级。
+            // 已清空的矿层不再阻挡；C 则以尚未开放的区块边界为准。
+            function canGuideToPosition(target) {
+                if (C_BLOCKS) return target.z >= blockFront();
+                const from = Math.hypot(player.position.x, player.position.z);
+                const to = Math.hypot(target.x, target.z);
+                const near = Math.min(from, to), far = Math.max(from, to);
+                return !oreRings.some(ring => ring.remaining > 0 &&
+                    ORE_TIERS[ring.tierId].requiredPickaxe > pickaxeLevel &&
+                    near < ring.outerRadius && far > ring.innerRadius);
+            }
+
             function getGuideGoal() {
-                if (cityLevel === 0) return new THREE.Vector3(TILE_SLOTS["city-build"].x, 0, TILE_SLOTS["city-build"].z);
+                if (C_BLOCKS) return blockGuideGoal();
+                if (cityLevel === 0) {
+                    const build = zones.find(z => z.id === "city-build");
+                    if (build && coins < build.cost - build.paid) {
+                        const mine = getNearestOre("low");
+                        if (mine) return guideThroughGate(oreGuidePoint(mine));
+                    }
+                    return new THREE.Vector3(TILE_SLOTS["city-build"].x, 0, TILE_SLOTS["city-build"].z);
+                }
                 if (finaleStarted) return null;
+                if (ultimateCharge && !ultimateCharge.locked) return guideThroughGate(ultimateCharge.home.clone());
 
                 const hatcheryZone = zones.find(zone => zone.id === "hatchery" && !zone.complete);
 
@@ -10422,16 +11561,15 @@
                 // 城停在 Lv1、低级矿只挖了 11.8%，因为箭头从没指过城里任何一张地贴。
                 //
                 // 门槛挂在孵化台上：孵化台亮着，「去把蛋捡回来」才是一件玩家做得完的事。
-                if (eggPickup && hatcheryZone && hatcheryZone.group.visible) {
-                    return eggPickup.mesh.position.clone();
-                }
+                // 免费孵化常驻后，先处理城内可付的地贴，再引导捡蛋。
 
                 // 箭头只认「现在就付得起、而且轮得到」的地贴，否则玩家会被指着一个收不了钱的格子干站着。
                 //
                 // group.visible 是必须判的：被反向门和钻石单轨收起来的地贴仍然留在 zones 里
                 // （撤掉的话付款进度会丢），isZonePayable 看不见这一层，光靠它箭头会指向
                 // 一张玩家眼前根本不存在的贴。updateZones 和 ensureProgressAffordable 都判了这个。
-                const ready = zone => Boolean(zone) && zone.group.visible && isZonePayable(zone) &&
+                const ready = zone => Boolean(zone) && zone.group.visible && !zone.complete &&
+                    !zone.requiresReentry && isZonePayable(zone) && canGuideToPosition(zone.position) &&
                     walletOf(tileCurrency(zone.id)) >= zone.cost - zone.paid;
 
                 const hatchery = hatcheryZone;
@@ -10467,8 +11605,10 @@
                             flatDistance(b.position, player.position))[0];
                     if (sealNode) return guideThroughGate(oreGuidePoint(sealNode));
                 }
+                const waveTarget = enemies.find(e => e.userData.wave && e.userData.alive);
+                if (waveTarget) return guideThroughGate(waveTarget.position.clone());
                 const seal = zones.find(zone => zone.id === "seal" && !zone.complete);
-                if (seal) return guideThroughGate(seal.position.clone());
+                if (ready(seal)) return guideThroughGate(seal.position.clone());
 
                 // 交替顺序由 isZonePayable 保证，这里只需要按「先锄头后扩城」挑当前那一步。
                 // 仍然走 guideThroughGate：锄头贴留着「最后一级换槽位」的接缝（见 tileSlot），
@@ -10506,7 +11646,9 @@
                         zone.group.visible && tileCurrency(zone.id) === "gem" &&
                         isZonePayable(zone) && gems < zone.cost - zone.paid);
                     if (short) {
-                        const guard = nearestLivingGuard();
+                        const guard = enemies.filter(e => e.userData.alive && e.userData.attackable &&
+                            e.userData.type === "monster" && canGuideToPosition(e.position))
+                            .sort((a, b) => flatDistance(a.position, player.position) - flatDistance(b.position, player.position))[0];
                         if (guard) return guideThroughGate(guard.position.clone());
                     }
                 }
@@ -10516,12 +11658,18 @@
                 // 不能退回「指最近的矿」：getGuideOreTarget() 挑的是锄头能挖的最高一层，
                 // 而缺的那一档来自更低的层——玩家会被一路指着往深处走，越走离要找的宝石越远。
                 // 也不能只按层指：同一层里有的段早被掏空了，指过去是一堵没货的墙。
-                if (ECON.shards && pickaxe && isZonePayable(pickaxe) && tileCurrency("pickaxe") === "shard") {
+                if (ECON.shards && pickaxe && pickaxe.group.visible && isZonePayable(pickaxe) && tileCurrency("pickaxe") === "shard") {
                     const grade = requiredShardGrade();
                     if (grade && shards[grade] < pickaxe.cost - pickaxe.paid) {
                         const node = nearestShardNode(grade);
                         if (node) return guideThroughGate(oreGuidePoint(node));
                     }
+                }
+
+                // 收集升级材料优先于可选的龙蛋；孵化台出现不代表通往蛋的矿层已能凿开。
+                if (cityLevel >= 3 && !pet && !carryingEgg && eggPickup &&
+                    hatcheryZone && hatcheryZone.group.visible && canGuideToPosition(eggPickup.mesh.position)) {
+                    return guideThroughGate(eggPickup.mesh.position.clone());
                 }
 
                 const ore = getGuideOreTarget();
@@ -10534,11 +11682,18 @@
                     return guideThroughGate(oreGuidePoint(ore));
                 }
 
-                // 已经没有挖得动的矿了，把玩家指回城里轮得到的地贴，钱不够也让他先站上去。
-                if (pickaxe && isZonePayable(pickaxe)) return pickaxe.position.clone();
-                if (carryingEgg && hatchery) return hatchery.position.clone();
-                if (evolve && pet && !petEvolved) return evolve.position.clone();
-                if (upgrade && isZonePayable(upgrade)) return upgrade.position.clone();
+                // 刚付款后需要离开地贴再进入，给一个可走的离场点，不能继续指地贴中心。
+                for (const zone of [pickaxe, forge, upgrade, hatchery, evolve, seal]) {
+                    if (!zone || !zone.group.visible || zone.complete || !isZonePayable(zone) ||
+                        !zone.requiresReentry || !canGuideToPosition(zone.position) ||
+                        walletOf(tileCurrency(zone.id)) < zone.cost - zone.paid) continue;
+                    for (const dx of [3.2, -3.2]) {
+                        const exit = zone.position.clone().add(new THREE.Vector3(dx, 0, 0));
+                        if (isWalkableSpot(exit) && !insideSolids(exit) &&
+                            !pathCrossesOre(player.position, exit, CONFIG.playerRadius)) return exit;
+                    }
+                }
+                // 资源暂未到账或不存在可执行步骤时不指向隐藏、锁定、缺材料的设施。
                 return null;
             }
 
@@ -10746,7 +11901,8 @@
                 }
                 const delta = target.clone().sub(player.position).setY(0);
                 const distance = delta.length();
-                if (distance <= 1.6) {
+                const tileTarget=C_BLOCKS && zones.some(z=>z.group.visible && !z.complete && flatDistance(z.position,target)<.05);
+                if (distance <= (tileTarget ? Math.min(.8,CONFIG.zoneTileSize*.25) : 1.6)) {
                     stick.x = 0;
                     stick.z = 0;
                     stick.magnitude = 0;
@@ -10781,11 +11937,12 @@
             }
 
             function startGame() {
+                if (opening.active) finishOpeningReveal();
                 if (started) return;
                 started = true;
                 runStart = performance.now();
                 ensureAudio();
-                if (!tutorialDone) setTutorial(true, "走进光圈，用背上的金币建设主城");
+                if (!tutorialDone) setTutorial(true, "走进光圈，建设你的主城");
             }
 
             function ensureAudio() {
@@ -10828,7 +11985,7 @@
                     upgrade: { wave: "sine", from: 420, to: 960, gain: 0.075, duration: 0.34 },
                     hurt: { wave: "square", from: 240, to: 90, gain: 0.07, duration: 0.19 },
                     warn: { wave: "sine", from: 180, to: 260, gain: 0.05, duration: 0.22 },
-                    // 完美闪避。频率上扬读作「成功」，而 hurt 是下降的方波——两个音
+                    // 闪避。频率上扬读作「成功」，而 hurt 是下降的方波——两个音
                     // 会在同一秒内先后响（躲开这一下、旁边那只怪打中你），必须一听就分得开。
                     perfect: { wave: "sine", from: 1320, to: 1980, gain: 0.062, duration: 0.16 },
                     ice: { wave: "sine", from: 1180, to: 620, gain: 0.05, duration: 0.2 },
@@ -11115,6 +12272,67 @@
 
             let sweepEnabled = true;
             let sweepCharge = null;
+            let ultimateCharge = null;
+            function dressUltimateCharge(charge) {
+                // 独立的重装轮廓：六角装甲桶、六根爆破罐和顶部能量核心。
+                for (const child of charge.group.children) {
+                    if (![charge.body, charge.spark, charge.track, charge.fill].includes(child)) child.visible = false;
+                }
+                charge.body.geometry.dispose();
+                charge.body.geometry = new THREE.CylinderGeometry(.82, .98, 1.85, 6);
+                charge.body.position.y = 1.12;
+                charge.body.material.color.setHex(0x602338);
+                charge.body.material.metalness = .65;
+                const gold = new THREE.MeshStandardMaterial({color:0xe8b75a,metalness:.7,roughness:.32});
+                const dark = new THREE.MeshStandardMaterial({color:0x28273c,metalness:.7,roughness:.4});
+                const red = new THREE.MeshStandardMaterial({color:0xb53c38,metalness:.35,roughness:.45});
+                const add = (geometry,material,x,y,z) => {
+                    const mesh=new THREE.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.castShadow=true;charge.group.add(mesh);return mesh;
+                };
+                for(const y of [.25,1.9]) add(new THREE.CylinderGeometry(1.08,1.08,.23,6),gold,0,y,0);
+                for(let i=0;i<6;i++) {
+                    const angle=i*Math.PI/3,x=Math.cos(angle)*1.02,z=Math.sin(angle)*1.02;
+                    add(new THREE.CylinderGeometry(.23,.23,1.25,8),red,x,1.05,z);
+                    for(const y of [.43,1.68])add(new THREE.CylinderGeometry(.29,.29,.16,8),gold,x,y,z);
+                    add(new THREE.BoxGeometry(.14,1.42,.14),gold,x*.78,1.1,z*.78);
+                }
+                add(new THREE.CylinderGeometry(.65,.8,.32,8),dark,0,2.15,0);
+                const coreMat=new THREE.MeshStandardMaterial({color:0xffdf87,emissive:0xff651a,emissiveIntensity:.5,metalness:.2,roughness:.2});
+                charge.core=add(new THREE.OctahedronGeometry(.5),coreMat,0,2.6,0);
+                const halo=add(new THREE.TorusGeometry(.7,.065,6,32),gold,0,2.42,0);halo.rotation.x=Math.PI/2;
+                const symbol=add(new THREE.OctahedronGeometry(.3),coreMat,0,1.16,1.0);symbol.scale.z=.32;
+                charge.spark.position.y = 3.2;
+                charge.track.material.color.setHex(0xb98c40);
+            }
+
+            function ensureUltimateCharge() {
+                if (VERSION !== "a" || ultimateCharge || finaleStarted) return;
+                const slot = TILE_SLOTS.seal;
+                ultimateCharge = createSweepCharge(new THREE.Vector3(slot.x, 0, slot.z), [SEALED_TIER]);
+                ultimateCharge.ultimate = true;
+                ultimateCharge.locked = true;
+                ultimateCharge.group.scale.setScalar(1.25);
+                dressUltimateCharge(ultimateCharge);
+                const lock = new THREE.Group();
+                const metal = new THREE.MeshBasicMaterial({color: 0xffd56b, depthTest: false, depthWrite: false, transparent: true});
+                const block = new THREE.Mesh(new THREE.BoxGeometry(1.3,1,.28), metal);
+                const loop = new THREE.Mesh(new THREE.TorusGeometry(.46,.12,8,20,Math.PI), metal);
+                loop.position.y=.48;
+                lock.add(block,loop);
+                const keyMat = new THREE.MeshBasicMaterial({color:0x36200b,depthTest:false,depthWrite:false,transparent:true});
+                const hole = new THREE.Mesh(new THREE.CircleGeometry(.14,16),keyMat);
+                hole.position.set(0,.07,.16);
+                const slotMesh = new THREE.Mesh(new THREE.PlaneGeometry(.13,.27),keyMat);
+                slotMesh.position.set(0,-.12,.16);
+                lock.add(hole,slotMesh);
+                lock.position.set(0,3.65,0);
+                ultimateCharge.group.add(lock);ultimateCharge.lock=lock;
+                lock.traverse(o=>{if(o.isMesh)o.renderOrder=20;});
+                hole.renderOrder=21;slotMesh.renderOrder=21;
+                lock.quaternion.copy(camera.quaternion);
+
+            }
+
 
             // 待横扫的矿层：比当前锄头等级严格更低、且还有存货的那些。
             // 绝不能包含新锄头刚解锁的那一层：Lv3 若把高级矿一起扫了，breachedByTier.high
@@ -11132,7 +12350,8 @@
             // 引爆是他自己走过去做的，「这是我干的」而不是「这事发生在我身上」——
             // 清场爽感的大头恰恰在这个区别上。
             function spawnSweepCharge() {
-                if (!sweepEnabled) return;
+                if(C_BLOCKS)return; // 扩建已按用地爆破，不再把玩家引回旧矿区领横扫桶。
+                if (!sweepEnabled || sweepCharge?.ultimate) return;
                 const tierIds = pendingSweepTiers();
                 if (!tierIds.length) return;
                 if (sweepCharge) scene.remove(sweepCharge.group);
@@ -11228,19 +12447,19 @@
                     body,
                     spark,
                     fill,
+                    track,
                     tierIds,
                     home: group.position.clone(),
                     lit: false,
                     timer: 0,
-                    bob: Math.random() * 6
+                    bob: random() * 6
                 };
             }
 
             // 点着之后不给灭。一秒钟太短，中途走开就取消只会制造挫败感；而且玩家此刻正贴着桶，
             // 一秒内不可能跑出爆炸的观看距离——这正是把引爆点挪到矿墙脚下想要的效果。
-            function updateSweepCharge(dt, elapsed) {
-                if (!sweepCharge) return;
-                const charge = sweepCharge;
+            function updateSweepCharge(dt, elapsed, charge = sweepCharge) {
+                if (!charge || charge.locked) return;
                 if (!charge.lit) {
                     if (cinematic.active || ctaOpen) return;
                     charge.group.position.y = Math.sin(elapsed * 3 + charge.bob) * 0.06;
@@ -11256,18 +12475,32 @@
                 const ratio = Math.min(1, charge.timer / SWEEP_CHARGE_FUSE);
                 // 三路一起推进：地上的环画剩多久，火花沿引线往下烧，桶身越烧越亮、抖得越凶。
                 charge.fill.geometry.setDrawRange(0, Math.round(SWEEP_RING_SEGMENTS * ratio) * 6);
-                charge.spark.position.y = 1.98 - ratio * 0.5;
+                charge.spark.position.y = (charge.ultimate ? 3.2 : 1.98) - ratio * 0.5;
                 charge.spark.scale.setScalar(0.4 + Math.abs(Math.sin(elapsed * 34)) * 0.18);
                 charge.body.material.emissiveIntensity = 0.5 + ratio * 2.8;
                 charge.group.position.set(
-                    charge.home.x + (Math.random() - 0.5) * ratio * 0.14,
+                    charge.home.x + (random() - 0.5) * ratio * 0.14,
                     Math.abs(Math.sin(elapsed * 26)) * ratio * 0.1,
-                    charge.home.z + (Math.random() - 0.5) * ratio * 0.14
+                    charge.home.z + (random() - 0.5) * ratio * 0.14
                 );
                 if (ratio < 1) return;
 
                 scene.remove(charge.group);
-                sweepCharge = null;
+                if (charge.ultimate) ultimateCharge = null;
+                else sweepCharge = null;
+                if (charge.ultimate) {
+                    const node = oreNodes.filter(n => n.tier.sealed && !n.cleared)
+                        .sort((a, b) => flatDistance(a.position, charge.home) - flatDistance(b.position, charge.home))[0];
+                    if (!node || finaleStarted) return;
+                    markRun("ultimate-barrel");
+                    eruptOreChunks(node.position, 9, 60, SEALED_TIER);
+                    pulverizeOreAround(node.position, 9, SEALED_TIER);
+                    buildDust(node.position.clone(), 45, 8, 0xffa34f);
+                    buildPopEffect(charge.home.clone().setY(1), 50, 0xff8a3c);
+                    playSound("break");
+                    breakSeal(node);
+                    return;
+                }
                 startSweep(charge.tierIds, charge.home.clone());
             }
 
@@ -11393,7 +12626,7 @@
                 const monster = node.monster;
                 if (!monster) return;
                 if (!node.monsterRevealed) {
-                    revealOreMonster(node);
+                    revealOreMonster(node, true);
                     // revealOreMonster 把守卫压到地下等起身动画，碎块不能生成在那儿。
                     monster.position.y = 0;
                 }
@@ -11403,10 +12636,14 @@
 
             function update(dt, elapsed) {
                 updateCinematic(dt);
+                updateAttackRange(dt);
+                if (petEvolved && breachedByTier.high > 0 && !finaleStarted) spawnFinalWave();
                 const interactive = !cinematic.active && !ctaOpen;
                 if (interactive) {
+                    updateFrontierCity();
                     autoPilot();
                     updatePlayer(dt, elapsed);
+                    if (C_BLOCKS) updateBlockDistricts(dt);
                     updateZones(dt);
                     updateOreShards(dt);
                     updateEnemies(dt);
@@ -11421,12 +12658,25 @@
                 updateDeferred(dt);
                 // 放在非交互段之外：横扫中途要是被演出打断，矿墙会停在「看不见但仍然挡人」的
                 // 半截状态上，所以它必须无论如何都跑完。引信同理，点着了就没有熄灭这一说。
+                ensureUltimateCharge();
                 updateSweepCharge(dt, elapsed);
+                updateSweepCharge(dt, elapsed, ultimateCharge);
+                if (ultimateCharge?.core) {
+                    ultimateCharge.core.rotation.y += dt * (ultimateCharge.locked ? .4 : 2);
+                    ultimateCharge.core.material.emissiveIntensity = ultimateCharge.locked ? .35 : 1.6 + Math.sin(elapsed * 6) * .6;
+                    if (ultimateCharge.lit) ultimateCharge.core.material.emissiveIntensity = 3;
+                }
+                if (ultimateCharge?.locked) {
+                    // 始终正对镜头，避免俯视时锁环缩成一条线。
+                    ultimateCharge.lock.quaternion.copy(camera.quaternion);
+                    ultimateCharge.lock.position.y = 3.65 + Math.sin(elapsed * 2) * .08;
+                }
                 updateSweep(dt);
                 if (blockedMineHint > 0) blockedMineHint -= dt;
                 updateOreRecoil(dt);
                 updatePet(dt, elapsed);
                 updateCoins(dt, elapsed);
+                if (C_BLOCKS) updateBlockCoinBatches();
                 updateProjectiles(dt);
                 updateEffects(dt, elapsed);
                 updateFlameDragon(dt, elapsed);
@@ -11434,6 +12684,8 @@
                 updateOreLensClip();
                 updateBillboards();
                 updateGuide(dt);
+                updateTileHint();
+                updateBlockDonation();
                 updateTorches(elapsed);
                 // 放在交互段之外：远景矿脉最值钱的展示时机是终局对峙和 CTA，
                 // 那两段 interactive 都是 false，塞进去就正好在该动的时候不动了。

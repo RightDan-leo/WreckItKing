@@ -15,3 +15,7 @@ crop.png
 lark-auth-qr.png
 
 node_modules/
+
+# 本地浏览器验收记录与截图
+.playwright-cli/
+output/playwright/

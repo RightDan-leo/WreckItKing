@@ -12,6 +12,9 @@ related:
   - tasks/dual-currency-economy.spec.md
 ---
 
+> **2026-09-11 第三期实施更新（优先于下文历史记录）**：挖矿两条发币路径使用 ghostRatio: 4（真实币 + 四枚影子币），不放大经济入账；掉落上限由 110 提升到 550。影子币无入账、无音效、无投影；怪物拆矿的金币也使用这条视觉路径。性能验收采用 Chrome CPU 4×/6×，数据见第三期验收记录。 完整验收见 [第三期玩测 spec](playtest-r3-followup.spec.md)。
+
+
 # Task: 金币无条件自动回收
 
 ## 目标

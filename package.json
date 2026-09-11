@@ -4,6 +4,7 @@
   "description": "New Wreck It King local static server + tuning save endpoint",
   "scripts": {
     "start": "node server.js",
-    "build": "node build-versions.mjs"
+    "build": "node build-versions.mjs",
+    "verify:playtest": "node scripts/verify-playtest.mjs"
   }
 }

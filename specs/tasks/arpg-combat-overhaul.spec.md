@@ -13,6 +13,9 @@ related:
   - tasks/pet-hatch-evolution.spec.md
 ---
 
+> **2026-09-11 第三期实施更新（优先于下文历史记录）**：玩家可见文案统一为“闪避 / DODGE”，不再显示“完美”或“破绽”；内部 perfectWindow、perfect 音效、CSS 名保持不变。窗口为 0.45 秒，仍要求危险区内的 lastInsideAt 记录，站在区外不白给奖励。踉跄 0.8 秒、受伤 ×2、时间微顿和冲击环保留。弓箭获得后，在附近有可见敌人时淡入实际索敌范围环（攻击距离 + 1.4，当前 6.8 米）。 完整验收见 [第三期玩测 spec](playtest-r3-followup.spec.md)。
+
+
 # Task: ARPG 战斗深度与钻石武器线
 
 ## 目标
