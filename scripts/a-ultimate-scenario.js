@@ -13,7 +13,7 @@ async page=>{
   if(!__wik.ultimate()?.locked||__wik.ultimate()?.lit||__wik.state().finaleStarted)throw Error('locked barrel ignited');
   __wik.tp(0,-7);__wik.auto(true);let tile;
   for(let i=0;i<2000;i++){__wik.sim(.1);tile=__wik.tiles().find(z=>z.id==='evolve');if(tile)break;}
-  __wik.auto(false);if(!tile||tile.z!==-14||tile.x!==5||tile.cost!==10)throw Error('evolution location or donation wrong');
+  __wik.auto(false);if(!tile||tile.z!==(__wik.outpost().built?-28:-14)||tile.x!==(__wik.outpost().built?0:5)||tile.cost!==10)throw Error('evolution location or donation wrong');
   __wik.tp(0,-15);__wik.sim(.6);return tile;
  });
  await page.screenshot({path:'output/playwright/a-evolve-in-city.png'});

@@ -29,7 +29,7 @@ async (page) => {
     if(i%80===79)shots.push({time,state:s,audit:a});
     if(s.ctaOpen)break;
    }
-   return {maxSplashHits:__wik.petSplash(),state:__wik.state(),marks:__wik.marks(),variants:__wik.variants(),audit:__wik.audit(),waits,first,maxDrops,maxGhosts,maxPen,collision,shots};
+   return {outpost:__wik.outpost(),maxSplashHits:__wik.petSplash(),state:__wik.state(),marks:__wik.marks(),variants:__wik.variants(),audit:__wik.audit(),waits,first,maxDrops,maxGhosts,maxPen,collision,shots};
   });
   results.push({v,initial,run,errors});page.removeListener('pageerror',onError);
  }

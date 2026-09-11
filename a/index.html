@@ -968,6 +968,7 @@
                 zonePulseSpeed: 3.4,
                 zonePaymentInterval: 0.03,
                 zonePaymentTicks: 50,
+                coinPaymentTicks: 20,
                 arenaRadius: 48,
                 guardXrayRange: 16,
                 eggPickupDuration: 0.85,
@@ -2144,6 +2145,7 @@
                 //
                 // color 在这儿是兜底：实际取色走 drawTile 里的 weaponArcColor(下一级)，
                 // 跟着买到的那一级走，和锄头台是同一套做法。
+                outpost: { name:"终极炸药桶", icon:"barrel", color:0xffc55b },
                 forge: { name: "武器建造台", icon: "bow", color: 0x8fd6ff },
                 // 唯一一张不在城里的地贴。取巨龙的橙红而不是别的颜色：玩家走到墙根时
                 // 这张贴和它背后那道封印墙、以及一分钟后从墙里钻出来的东西是同一个色系，
@@ -2459,6 +2461,8 @@
             const cinematic = { active: false, timer: 0, duration: 0, steps: [], index: 0 };
             const opening = { active: false, finished: false };
             const cityExtensions = [];
+            const blastOutpost = { paid:false, built:false, cost:170, coinsBefore:null, subsidy:0 };
+            const OUTPOST_SLOTS = {forge:{x:-5,z:-29},pickaxe:{x:5,z:-29},evolve:{x:0,z:-28}};
             const frontierCity = { active: false, at: null };
             const FRONTIER_SLOTS = {
                 "city-upgrade": { x: 0, z: -18.5 },
@@ -2702,6 +2706,7 @@
                     marks: () => runMarks,
                     auto: (on = true) => {
                         autoRun = on;
+                        if(on && !opening.active)startGame();
                         // 关掉时把摇杆归零。自动流程是靠每帧写 stick 驱动玩家的，不清的话
                         // 它会拿着最后那一帧的方向一直走——调试时的表现是「明明关了自动，
                         // tp 过去又自己跑回来了」，而这个现象太容易被误读成 tp 没生效，
@@ -2710,7 +2715,8 @@
                         return autoRun;
                     },
                     sweep: (on = true) => { sweepEnabled = on; return sweepEnabled; },
-                    ultimate: () => ultimateCharge && ({locked: ultimateCharge.locked, lockVisible: ultimateCharge.lock.visible, lit: ultimateCharge.lit, x: ultimateCharge.home.x, z: ultimateCharge.home.z}),
+                    outpost: () => ({...blastOutpost,zone:zones.find(z=>z.id==="outpost") ? {paid:zones.find(z=>z.id==="outpost").paid,cost:blastOutpost.cost}:null}),
+                    ultimate: () => ultimateCharge && ({locked: ultimateCharge.locked, lockVisible: ultimateCharge.lock.visible, modelVisible: ultimateCharge.model.visible, hintInside: Boolean(ultimateCharge.hintInside), lit: ultimateCharge.lit, x: ultimateCharge.home.x, z: ultimateCharge.home.z}),
                     waveEnemies: () => enemies.filter(e => e.userData.wave && e.userData.alive).map(e => ({x:e.position.x,z:e.position.z,engaged:e.userData.engaged})),
                     equipment: (opts = {}) => {
                         if(opts.pick){pickaxeLevel=opts.pick;applyPickaxeAppearance();setHeldItem("pick");}
@@ -4825,11 +4831,12 @@
             let frontierWalls = null;
             let frontierWallLevel = 0;
             function syncFrontierWalls() {
-                if (!frontierCity.active || frontierWallLevel === cityLevel) return;
+                if ((!frontierCity.active && !blastOutpost.built) || frontierWallLevel === cityLevel+(blastOutpost.built?10:0)) return;
                 if (frontierWalls) scene.remove(frontierWalls);
                 frontierWalls = new THREE.Group();
                 scene.add(frontierWalls);
-                frontierWallLevel = cityLevel;
+                frontierWallLevel = cityLevel+(blastOutpost.built?10:0);
+                const tip = blastOutpost.built ? -32 : -22.7;
                 const stage = city.stages[cityLevel - 1];
                 const segment = (a, b) => {
                     const length = Math.hypot(b.x - a.x, b.z - a.z);
@@ -4855,14 +4862,14 @@
                     const points = [
                         { x: anchor.position.x, z: anchor.position.z + CITY_OFFSET_Z },
                         { x: side * 11.4, z: -13 },
-                        { x: side * 11.4, z: -21.7 },
-                        { x: side * 10.2, z: -22.7 },
-                        { x: side * 3.5, z: -22.7 }
+                        { x: side * 11.4, z: tip+1 },
+                        { x: side * 10.2, z: tip },
+                        { x: side * 3.5, z: tip }
                     ];
                     edges.push(points);
                     for (let i = 1; i < points.length; i++) segment(points[i - 1], points[i]);
                     const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.8, 2.2, 8), shared.cityStoneMat);
-                    tower.position.set(side * 3.5, 1.1, -22.7);
+                    tower.position.set(side * 3.5, 1.1, tip);
                     tower.castShadow = true;
                     frontierWalls.add(tower);
                     animateChunkRise(tower, 0.15);
@@ -4881,7 +4888,7 @@
             }
 
             function openFrontierConnection() {
-                if (!frontierCity.active) return;
+                if (!frontierCity.active && !blastOutpost.built) return;
                 for (const stage of city.stages) {
                     for (const wall of stage.walls) {
                         if (wall.position.z < 0 && Math.abs(wall.position.x) < 7.5) wall.visible = false;
@@ -4934,6 +4941,29 @@
                 buildDust(new THREE.Vector3(0, 0.5, -18), 24, 5, 0xc5b3a0);
                 nudgePlayerOutOfCollision();
                 toast("低级矿区已扩建为前沿广场，升级设施已迁入");
+            }
+
+            function canBuildBlastOutpost() {
+                return !C_BLOCKS && cityLevel>=4 && petEvolved && finalWave.spawned && finalWave.killed>=finalWave.count;
+            }
+
+            function updateBlastOutpost() {
+                if(!canBuildBlastOutpost() || blastOutpost.built || !blastOutpost.paid || ringRemaining("low")>0 || ringRemaining("mid")>0 || sweep.active)return;
+                blastOutpost.built=true;
+                openFrontierConnection();
+                for(const side of [-1,1]){
+                    const house=createHouse(850+(side+1));house.position.set(side*9,0,-29);scene.add(house);
+                    addSolidCollider(side*9,-29,1.35);animateChunkRise(house,.1);
+                }
+                for(const zone of zones){if(OUTPOST_SLOTS[zone.id]&&!zone.complete)moveZone(zone,OUTPOST_SLOTS[zone.id]);}
+                if(ultimateCharge){
+                    ultimateCharge.model.visible=true;
+                    ultimateCharge.body.material.color.setHex(0x602338);
+                }
+                markRun("outpost-built");
+                buildDust(new THREE.Vector3(0,.3,-28),24,5,0xc5b3a0);
+                toast("爆破前哨建成，终极炸药桶已就绪！");
+                playSound("upgrade");maybeShowSealOffering();
             }
 
             function createCity() {
@@ -5430,6 +5460,10 @@
 
                 // 价格前面的货币标记：圆形金币 / 方形钻石 / 尖角菱形宝石。地贴是玩家判断
                 // 「该攒哪种钱」的唯一入口，光换数字不换形状会让人一路攒错。
+                if(zone.id==="outpost"){
+                    context.fillStyle="#ffe3a3";context.font="bold 22px sans-serif";context.textAlign="center";
+                    context.font="bold 21px sans-serif";context.fillText("终极炸药桶",96,35);
+                }
                 if (C_BLOCKS && zone.id === "city-upgrade") {
                     context.fillStyle = "#ffe3a3";
                     context.font = "bold 18px sans-serif"; context.textAlign = "center";
@@ -5520,7 +5554,12 @@
                 context.lineJoin = "round";
                 context.lineCap = "round";
 
-                if (icon === "city") {
+                if(icon === "barrel"){
+                    context.fillStyle="#a83d36";context.fillRect(-26,-13,52,51);
+                    context.strokeRect(-26,-13,52,51);
+                    for(const y of [-8,27]){context.beginPath();context.moveTo(-31,y);context.lineTo(31,y);context.stroke();}
+                    context.beginPath();context.moveTo(0,-33);context.lineTo(10,-23);context.lineTo(0,-13);context.lineTo(-10,-23);context.closePath();context.stroke();
+                } else if (icon === "city") {
                     context.beginPath();
                     context.moveTo(-34, 18);
                     context.lineTo(-34, -6);
@@ -5636,6 +5675,8 @@
             // 城里同一处，所以这张贴实际不动（理由见 TILE_SLOTS["pickaxe-last"]）。
             // 创建和重新布防两条路都走这里，免得换槽位的规则各写一份。
             function tileSlot(id) {
+                if (id==="outpost") return frontierCity.active ? {x:0,z:-18.5} : {x:0,z:-10.9};
+                if (blastOutpost.built && OUTPOST_SLOTS[id]) return OUTPOST_SLOTS[id];
                 if (C_BLOCKS) return blockTileSlot(id);
                 if (frontierCity.active && FRONTIER_SLOTS[id]) return FRONTIER_SLOTS[id];
                 if (VERSION === "a" && id === "evolve") return { x: 0, z: -10.9 };
@@ -5696,6 +5737,12 @@
                     group.add(bowDisplay);
                 }
 
+                if(id==="outpost"){
+                    ensureUltimateCharge();
+                    const preview=ultimateCharge.model.clone(true);
+                    preview.visible=true;preview.scale.setScalar(.5);preview.position.set(-2.1,.2,0);
+                    group.add(preview);
+                }
                 const zone = {
                     id,
                     cost,
@@ -5732,6 +5779,7 @@
             }
 
             function resolveTileCost(id) {
+                if(id==="outpost")return blastOutpost.cost;
                 if (id === "city-build") return CITY_STAGES[0].cost;
                 if (id === "city-upgrade") {
                     const next = CITY_STAGES[cityLevel];
@@ -5854,6 +5902,11 @@
                     completeEvolve();
                 } else if (id === "forge") {
                     completeWeapon();
+                } else if (id === "outpost") {
+                    blastOutpost.paid=true;
+                    const zone=zones.find(z=>z.id==="outpost");if(zone)removeZone(zone);
+                    markRun("outpost-funded");updateBlastOutpost();
+                    if(!blastOutpost.built)toast("前哨资金已交齐，清空低、中级矿区后开建");
                 } else if (id === "seal") {
                     completeSeal();
                 }
@@ -6424,11 +6477,19 @@
             function maybeShowSealOffering() {
                 if (!ECON.sealOffering || finaleStarted) return;
                 if (!petEvolved) return;
+                if (!C_BLOCKS && !blastOutpost.built) {
+                    if(canBuildBlastOutpost() && !blastOutpost.paid && !zones.some(z=>z.id==="outpost")){
+                        blastOutpost.coinsBefore=coins;showTile("outpost");
+                        markRun("outpost-ready");
+                        toast("末波已清除！回城建造爆破前哨，准备最终爆破");
+                    }
+                    return;
+                }
                 // 先让末波战斗读清楚，再亮出献祭目标；金币不足时引导仍会返回矿区。
                 if (!finalWave.spawned || finalWave.killed < finalWave.count) return;
                 if (sealOffered) return;
                 sealOffered = true;
-                if (VERSION === "a") {
+                if (!C_BLOCKS) {
                     ensureUltimateCharge();
                     ultimateCharge.locked = false;
                     ultimateCharge.lock.visible = false;
@@ -6488,6 +6549,7 @@
             }
 
             function isZonePayable(zone) {
+                if(zone.id==="outpost")return canBuildBlastOutpost() && !blastOutpost.paid && !zone.complete;
                 if (zone.complete) return false;
                 if (C_BLOCKS && zone.id === "city-upgrade") return cityLevel>0 && cityLevel<4 && !cityGate;
                 if (zone.id === "hatchery") return carryingEgg;
@@ -6570,7 +6632,7 @@
                     if (zone.paymentTimer > 0) continue;
                     zone.paymentTimer = CONFIG.zonePaymentInterval;
                     // 每次扣的枚数跟着剩余金额走，贵的地贴也能在一秒多付完，不然后期光付款就要等七八秒。
-                    const step = Math.max(1, Math.ceil(remaining / CONFIG.zonePaymentTicks));
+                    const step = Math.max(1, Math.ceil(remaining / (currency === "coin" ? CONFIG.coinPaymentTicks : CONFIG.zonePaymentTicks)));
                     const amount = Math.min(step, wallet, remaining,remote?zone.remoteBudget:Infinity);
                     if(remote)zone.remoteBudget-=amount;
                     if (currency === "gem") {
@@ -6661,6 +6723,13 @@
                 return `${zoneStatus(zone)} · ${zone.paid}/${zone.cost}`;
             }
             function updateTileHint() {
+                const lockedPlot=ultimateCharge?.locked && !cinematic.active && !opening.active && !ctaOpen && flatDistance(ultimateCharge.home,player.position)<=SWEEP_CHARGE_RANGE;
+                if(ultimateCharge)ultimateCharge.hintInside=Boolean(lockedPlot);
+                if(lockedPlot){
+                    ui.tileHint.hidden=false;
+                    ui.tileHint.textContent=canBuildBlastOutpost() ? "请回城捐献建造终极炸药桶，完成后解锁" : "清除末波野怪后，请回城捐献解锁终极炸药桶";
+                    return;
+                }
                 const zone=C_BLOCKS && !cinematic.active && !ctaOpen && zones.find(z=>z.group.visible && !z.complete && isPlayerInsideZonePosition(z.position));
                 ui.tileHint.hidden=!zone;
                 if(zone) { const hint=zonePaymentHint(zone);if(ui.tileHint.textContent!==hint)ui.tileHint.textContent=hint; }
@@ -7126,7 +7195,10 @@
 
                 // 只埋在挡人的格子里。上面那几层挖空后要留在原地当洞顶，埋在洞顶上的宝石
                 // 玩家看得见、挖不到，是纯粹的挑衅。
+                // A/B 的升级宝石集中在整片矿区中间 60% 的弧段，两侧各留 20% 无宝石边带。
+                // C 仍按分块开采的必经列分配，避免把材料放到未开放地块。
                 const pool = cells.filter(cell => cell.blocking && !cell.removed &&
+                    (C_BLOCKS || ((cell.column.ai + .5) / node.ring.arcCells >= .2 && (cell.column.ai + .5) / node.ring.arcCells <= .8)) &&
                     (!C_BLOCKS || blockNodeLevel(node) >= 4 || blockColumnRequired(cell.column)));
                 if (!pool.length) {
                     // 玩家可在建城前清空整段；延迟产量不能因此被吞掉。
@@ -7134,7 +7206,7 @@
                     return;
                 }
 
-                // 沿切向均匀铺开：候选格按弧向排序后切成 count 份，每份里随机抽一格。
+                // 在允许的中央弧段内均匀铺开：候选格按弧向排序后切成 count 份，每份里随机抽一格。
                 // 纯随机撒不行——「挖了七成却一颗没碰到」和「挖了两成全捡了」都可能发生，
                 // 产量就不再和开采量挂钩，按开采比例倒推出来的那张产量表当场失效。
                 pool.sort((a, b) => (a.column.ai - b.column.ai) || (a.column.ri - b.column.ri));
@@ -9318,6 +9390,7 @@
                     // 变成死路的一种，兜底必须认品质，补错档等于没补。
                     if (shards[grade] < short) shards[grade] = short;
                 } else if (currency === "coin" && coins < short) {
+                    if(blocking.id==="outpost")blastOutpost.subsidy+=short-coins;
                     coins = short;
                 }
                 syncBackCoins();
@@ -11572,6 +11645,8 @@
                     !zone.requiresReentry && isZonePayable(zone) && canGuideToPosition(zone.position) &&
                     walletOf(tileCurrency(zone.id)) >= zone.cost - zone.paid;
 
+                const outpost=zones.find(z=>z.id==="outpost" && !z.complete);
+                if(ready(outpost))return guideThroughGate(outpost.position.clone());
                 const hatchery = hatcheryZone;
                 if (carryingEgg && ready(hatchery)) return hatchery.position.clone();
 
@@ -11626,6 +11701,8 @@
                 // 箭头就改指下一处矿点，玩家转身就走，一秒后整道墙在他背后塌掉——正是这个
                 // 改动本来要解决的毛病，只是从「没走到」换成了「已经走开」。
                 if (sweepCharge) return guideThroughGate(sweepCharge.home.clone());
+                if(outpost && !outpost.requiresReentry && coins>0 && canGuideToPosition(outpost.position) && flatDistance(player.position,outpost.position)<6)
+                    return guideThroughGate(outpost.position.clone());
 
                 // 钻石不够就先指守卫，排在矿之前。钻石只从守卫身上掉，而挖矿一颗也挖不出来——
                 // 这时候指矿是在把玩家往一条走不通的路上带：他会一直挖到整层矿见底，
@@ -11683,7 +11760,7 @@
                 }
 
                 // 刚付款后需要离开地贴再进入，给一个可走的离场点，不能继续指地贴中心。
-                for (const zone of [pickaxe, forge, upgrade, hatchery, evolve, seal]) {
+                for (const zone of [pickaxe, forge, upgrade, hatchery, evolve, seal, outpost]) {
                     if (!zone || !zone.group.visible || zone.complete || !isZonePayable(zone) ||
                         !zone.requiresReentry || !canGuideToPosition(zone.position) ||
                         walletOf(tileCurrency(zone.id)) < zone.cost - zone.paid) continue;
@@ -12307,13 +12384,19 @@
             }
 
             function ensureUltimateCharge() {
-                if (VERSION !== "a" || ultimateCharge || finaleStarted) return;
+                if (C_BLOCKS || ultimateCharge || finaleStarted) return;
                 const slot = TILE_SLOTS.seal;
                 ultimateCharge = createSweepCharge(new THREE.Vector3(slot.x, 0, slot.z), [SEALED_TIER]);
                 ultimateCharge.ultimate = true;
                 ultimateCharge.locked = true;
                 ultimateCharge.group.scale.setScalar(1.25);
                 dressUltimateCharge(ultimateCharge);
+                const model=new THREE.Group();
+                for(const child of [...ultimateCharge.group.children]){
+                    if(child!==ultimateCharge.track && child!==ultimateCharge.fill)model.add(child);
+                }
+                ultimateCharge.group.add(model);ultimateCharge.model=model;
+                model.visible=blastOutpost.built;
                 const lock = new THREE.Group();
                 const metal = new THREE.MeshBasicMaterial({color: 0xffd56b, depthTest: false, depthWrite: false, transparent: true});
                 const block = new THREE.Mesh(new THREE.BoxGeometry(1.3,1,.28), metal);
@@ -12326,7 +12409,7 @@
                 const slotMesh = new THREE.Mesh(new THREE.PlaneGeometry(.13,.27),keyMat);
                 slotMesh.position.set(0,-.12,.16);
                 lock.add(hole,slotMesh);
-                lock.position.set(0,3.65,0);
+                lock.position.set(0,1.7,0);
                 ultimateCharge.group.add(lock);ultimateCharge.lock=lock;
                 lock.traverse(o=>{if(o.isMesh)o.renderOrder=20;});
                 hole.renderOrder=21;slotMesh.renderOrder=21;
@@ -12460,7 +12543,8 @@
             // 点着之后不给灭。一秒钟太短，中途走开就取消只会制造挫败感；而且玩家此刻正贴着桶，
             // 一秒内不可能跑出爆炸的观看距离——这正是把引爆点挪到矿墙脚下想要的效果。
             function updateSweepCharge(dt, elapsed, charge = sweepCharge) {
-                if (!charge || charge.locked) return;
+                if (!charge) return;
+                if(charge.locked)return;
                 if (!charge.lit) {
                     if (cinematic.active || ctaOpen) return;
                     charge.group.position.y = Math.sin(elapsed * 3 + charge.bob) * 0.06;
@@ -12642,6 +12726,7 @@
                 const interactive = !cinematic.active && !ctaOpen;
                 if (interactive) {
                     updateFrontierCity();
+                    updateBlastOutpost();
                     autoPilot();
                     updatePlayer(dt, elapsed);
                     if (C_BLOCKS) updateBlockDistricts(dt);
@@ -12670,7 +12755,7 @@
                 if (ultimateCharge?.locked) {
                     // 始终正对镜头，避免俯视时锁环缩成一条线。
                     ultimateCharge.lock.quaternion.copy(camera.quaternion);
-                    ultimateCharge.lock.position.y = 3.65 + Math.sin(elapsed * 2) * .08;
+                    ultimateCharge.lock.position.y = 1.7 + Math.sin(elapsed * 2) * .08;
                 }
                 updateSweep(dt);
                 if (blockedMineHint > 0) blockedMineHint -= dt;

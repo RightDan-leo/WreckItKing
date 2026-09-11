@@ -23,6 +23,16 @@ try {
     assert.ok(run.maxSplashHits > 1, `${v}: evolved pet never hit a group`);
     assert.equal(run.audit.wave.left, 30);
     assert.equal(run.audit.wave.right, 30);
+    if(v!=='c'){
+      assert.equal(run.outpost.built,true);
+      assert.equal(run.marks.filter(m=>m.label==='outpost-ready').length,1);
+      assert.ok(run.marks.findIndex(m=>m.label==='final-wave')<run.marks.findIndex(m=>m.label==='outpost-ready'));
+      assert.ok(run.marks.findIndex(m=>m.label==='outpost-ready')<run.marks.findIndex(m=>m.label==='outpost-funded'));
+      assert.equal(run.outpost.subsidy,0);
+      assert.equal(run.marks.filter(m=>m.label==='outpost-funded').length,1);
+      assert.equal(run.marks.filter(m=>m.label==='outpost-built').length,1);
+      assert.ok(run.marks.findIndex(m=>m.label==='outpost-built')<run.marks.findIndex(m=>m.label==='ultimate-unlocked'));
+    }
     assert.equal(run.audit.wave.count, 60);
     assert.equal(run.audit.wave.killed, 60);
     assert.equal(run.waits['hatchery:0'].wait, 0);
@@ -54,6 +64,12 @@ try {
     assert.equal(generated.replace(`const BUILD_VERSION = "${v}";`, 'const BUILD_VERSION = null;').replaceAll('src="../vendor/', 'src="vendor/'), source);
   }
   console.log('C districts built in sequence without resource top-ups; all generated pages match the master.');
+  const outpostCode = readFileSync(new URL('./outpost-scenario.js', import.meta.url), 'utf8').replaceAll('http://localhost:9310', base);
+  const outpostOutput = cli('run-code', outpostCode);
+  const outpostPayload = outpostOutput.split('### Result\n')[1]?.split('\n###')[0].trim();
+  assert.ok(outpostPayload, outpostOutput);
+  writeFileSync('output/playwright/outpost-check.json', outpostPayload);
+  console.log('A/B: partial outpost funding, clear-mine construction, service routes and wave-gated free detonation passed.');
   const miningCode = readFileSync(new URL('./enemy-mining-scenario.js', import.meta.url), 'utf8').replaceAll('http://localhost:9310', base);
   const miningOutput = cli('run-code', miningCode);
   const miningPayload = miningOutput.split('### Result\n')[1]?.split('\n###')[0].trim();
